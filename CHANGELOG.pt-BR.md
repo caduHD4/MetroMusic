@@ -4,7 +4,7 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
-## 0.1.3
+## 0.1.4
 
 Correções na reprodução ao abrir o app e no Ouvir junto.
 
@@ -19,11 +19,15 @@ Correções na reprodução ao abrir o app e no Ouvir junto.
 - A posição segue o relógio do anfitrião: se a faixa demora a carregar, ela pula para onde ele está, e uma checagem periódica corrige a diferença com o tempo.
 - Testado de ponta a ponta contra o servidor real (`pnpm test:net`), com o app como anfitrião e como convidado.
 
-### Aparência
-- Nova opção de fundo **"Ada"** no app e no Tocando agora (contribuição de Helon21).
-
 ### Documentação
 - README e changelog agora são em inglês por padrão, com a versão em português ao lado.
+
+## 0.1.3
+
+Nova opção de fundo.
+
+### Aparência
+- Nova opção de fundo **"Ada"** no app e no Tocando agora (contribuição de Helon21).
 
 ## 0.1.2
 
