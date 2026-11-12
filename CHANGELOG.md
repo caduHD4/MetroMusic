@@ -19,6 +19,9 @@ Fixes for playback when the app opens and for Listen together.
 - The position follows the host's clock: if a track takes long to load, it jumps to where the host is, and a periodic check fixes drift over time.
 - Tested end to end against the real server (`pnpm test:net`), with the app as both host and guest.
 
+### Appearance
+- New **"Ada"** background option for the app and for Now playing (contributed by Helon21).
+
 ### Documentation
 - README and changelog are now in English by default, with the Portuguese version alongside.
 
