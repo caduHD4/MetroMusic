@@ -24,7 +24,8 @@ interface Player {
   shuffle: boolean; repeat: Repeat; volume: number; muted: boolean; speed: number; pitch: number;
   queueTitle: string; unshuffled: string[] | null; sleep: Sleep | null; sourceOverride: Record<string, ExtInfo>;
   radioOf: string | null;
-  play: (ids: string[], start?: number, title?: string, opts?: { shuffle?: boolean }) => void;
+  /** `start`: índice na lista. `opts.paused`: carrega a faixa mas não toca (o "Ouvir junto" espera o anfitrião); `opts.at`: segundo inicial. */
+  play: (ids: string[], start?: number, title?: string, opts?: { shuffle?: boolean; paused?: boolean; at?: number }) => void;
   playNext: (ids: string[]) => void; addToQueue: (ids: string[]) => void;
   toggle: () => void; next: (auto?: boolean) => void; prev: () => void; seek: (s: number) => void; jump: (i: number) => void;
   remove: (i: number) => void; reorder: (ids: string[]) => void; clearUpcoming: () => void;
@@ -52,6 +53,12 @@ const shuffled = (ids: string[]) => { const a = [...ids]; for (let i = a.length 
 /** Falhas seguidas ao pular automaticamente; zera quando uma faixa toca de verdade. */
 let errorStreak = 0;
 
+/**
+ * Faixa que o motor de áudio realmente tem carregada. Ao abrir o app a fila é restaurada do disco, mas o motor
+ * está vazio: "retomar" nesse estado não toca nada. O mesmo vale depois que a faixa termina (o motor fica no fim).
+ */
+let loadedId: string | null = null;
+
 export const usePlayer = create<Player>()(
   persist(
     (set, get) => {
@@ -60,13 +67,14 @@ export const usePlayer = create<Player>()(
       let sleepFade = 1; // 1 = volume normal; cai a 0 no último minuto do timer de sono
       const syncVolume = () => { const s = get(); engine.setVolume(s.muted ? 0 : s.volume * sleepFade); };
       /** Troca de faixa: registra no histórico e começa a tocar (no backend ou no simulador). */
-      const started = (extra: Partial<Player> = {}) => {
-        set({ position: 0, playing: true, buffering: true, error: null, info: null, ...extra });
+      const started = (extra: Partial<Player> = {}, start = 0, paused = false) => {
+        set({ position: start, playing: !paused, buffering: true, error: null, info: null, ...extra });
         clearTimeout(bufferTimer);
         const id = get().queue[get().index];
         const t = real(id);
+        loadedId = t ? id! : null;
         if (t) {
-          engine.play(playableExt(id!)!, 0)
+          engine.play(playableExt(id!)!, start, !paused)
             .then((token) => { if (token && token > get().engineToken) set({ engineToken: token }); })
             .catch((e) => get().setError(String(e)));
         } else {
@@ -98,6 +106,7 @@ export const usePlayer = create<Player>()(
         engineToken: 0, info: null,
         trackEnded: () => {
           const s = get();
+          loadedId = null; // o motor parou no fim da faixa: tocar de novo exige carregá-la outra vez
           if (s.sleep?.endOfSong) { sleepFade = 1; syncVolume(); toast("Timer de sono: reprodução pausada"); if (real(s.queue[s.index])) engine.pause(); return set({ playing: false, sleep: null, position: 0 }); }
           if (s.repeat === "one") return started();
           if (!getSetting("autoplay")) return set({ playing: false, position: 0 });
@@ -114,7 +123,7 @@ export const usePlayer = create<Player>()(
             const first = opts?.shuffle ? ids[Math.floor(Math.random() * ids.length)] : ids[start];
             set({ queue: [first, ...shuffled(ids.filter((i) => i !== first))], unshuffled: ids, index: 0, shuffle: true, queueTitle: title, radioOf: null });
           } else set({ queue: ids, index: start, unshuffled: null, shuffle: false, queueTitle: title, radioOf: null });
-          started();
+          started({}, opts?.at ?? 0, !!opts?.paused);
           // "Embaralhar a playlist primeiro" desligado: o conteúdo semelhante entra no meio do aleatório, sem esperar a lista acabar
           if (wantShuffle && !getSetting("shufflePlaylistFirst") && getSetting("autoLoadMore") && getSetting("similarContent")) mixSimilar();
         },
@@ -139,6 +148,12 @@ export const usePlayer = create<Player>()(
           const s = get(); if (!s.queue.length) return;
           const t = real(s.queue[s.index]);
           if (s.error) return t ? s.jump(s.index) : set({ error: null, playing: true });
+          // fila restaurada ao abrir o app (ou faixa que já acabou): o motor não tem nada para retomar, então carrega a faixa
+          // (a partir de onde parou, se for o caso) em vez de só "despausar" um motor vazio.
+          if (t && !s.playing && loadedId !== s.queue[s.index]) {
+            const dur = getTrack(s.queue[s.index])?.duration ?? 0;
+            return started({}, s.position > 1 && (!dur || s.position < dur - 2) ? s.position : 0);
+          }
           if (t) { if (s.playing) engine.pause(); else engine.resume(); }
           set({ playing: !s.playing });
         },
@@ -213,6 +228,7 @@ export const usePlayer = create<Player>()(
           started();
         },
         setError: (error, opts) => {
+          if (error) loadedId = null;
           set({ error, playing: false, buffering: false });
           if (!error || opts?.manual) { errorStreak = 0; return; }
           // Falha da faixa: por padrão pula para a próxima; o modo de depuração e o "perguntar antes" param aqui.
@@ -353,7 +369,7 @@ export async function initBackend() {
     if (!fresh(p)) return;
     if (p.state === "loading" || p.state === "buffering") P.setState({ buffering: true });
     else if (p.state === "playing") { errorStreak = 0; P.setState({ buffering: false, playing: true }); }
-    else if (p.state === "paused") P.setState({ playing: false });
+    else if (p.state === "paused") P.setState({ playing: false, buffering: false });
     else if (p.state === "error") P.getState().setError(p.message ?? "Erro de reprodução");
   });
   await onEvent<any>("audio:loaded", (p) => {
@@ -369,6 +385,7 @@ export async function initBackend() {
     if (idx < 0 || s.queue[idx] !== p.key) idx = s.queue.findIndex((id, i) => i > s.index && id === p.key); // a fila mudou no meio do caminho
     if (idx < 0) idx = s.queue.indexOf(p.key);
     if (idx < 0) return;
+    loadedId = s.queue[idx];
     P.setState({ index: idx, position: 0, playing: true, buffering: false, error: null, engineToken: Math.max(s.engineToken, p.token), info: { key: p.key, source: p.source, codec: p.codec, bitrate: p.bitrate } });
     if (p.duration) fixDuration(p.duration);
   });

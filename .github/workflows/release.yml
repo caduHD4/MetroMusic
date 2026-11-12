@@ -19,11 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: n
-        name: Notas da versão (seção do CHANGELOG.md)
+        name: Release notes (CHANGELOG.md in English, then CHANGELOG.pt-BR.md)
         run: |
           v="${GITHUB_REF_NAME#v}"
-          body="$(awk -v v="$v" '$0 ~ "^## \\[?"v"\\]?( |$)" {f=1; next} /^## / && f {exit} f' CHANGELOG.md)"
-          if [ -z "$body" ]; then body="Versão $v."; fi
+          section() { awk -v v="$v" '$0 ~ "^## \\[?"v"\\]?( |$)" {f=1; next} /^## / && f {exit} f' "$1"; }
+          en="$(section CHANGELOG.md)"
+          pt="$(section CHANGELOG.pt-BR.md)"
+          if [ -z "$en" ]; then en="Version $v."; fi
+          body="$en"
+          if [ -n "$pt" ]; then body="$en"$'\n\n---\n\n## Português (Brasil)\n\n'"$pt"; fi
           { echo "body<<EOF_NOTES"; echo "$body"; echo "EOF_NOTES"; } >> "$GITHUB_OUTPUT"
 
   build:

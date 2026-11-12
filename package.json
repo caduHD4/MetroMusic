@@ -1,7 +1,7 @@
 {
   "name": "metromusic",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "test": "node --test scripts/tests/*.test.mjs && cd src-tauri && cargo test",
     "i18n": "node scripts/i18n-extract.mjs",
     "tauri": "tauri",
-    "test:net": "node scripts/net/lt.net.mjs"
+    "test:net": "node scripts/net/lt.net.mjs && node scripts/net/lt.session.net.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

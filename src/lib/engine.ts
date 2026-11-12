@@ -37,7 +37,7 @@ export const SEARCHABLE = ["youtube", "soundcloud", "deezer", "spotify"];
 
 export const engine = {
   search: (provider: string, query: string, limit = 24) => invoke<ExtInfo[]>("search_online", { provider, query, limit }),
-  play: (track: ExtInfo, start = 0) => invoke<number>("audio_play", { track, start, autoplay: true, order: playbackOrder() }),
+  play: (track: ExtInfo, start = 0, autoplay = true) => invoke<number>("audio_play", { track, start, autoplay, order: playbackOrder() }),
   pause: () => invoke("audio_pause"),
   resume: () => invoke("audio_resume"),
   seek: (seconds: number) => invoke("audio_seek", { seconds }),

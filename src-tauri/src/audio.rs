@@ -645,6 +645,8 @@ fn engine_thread(sh: Arc<Shared>, rx: Receiver<Cmd>, emit: Emit, ready: std::syn
             if let Some(a) = active.as_mut().filter(|a| a.meta.token == token) {
                 a.duration = dur.or(a.duration);
                 emit("audio:loaded", json!({ "token": token, "key": a.meta.key, "source": a.meta.source, "codec": a.meta.codec, "bitrate": a.meta.bitrate, "duration": a.duration }));
+                // carregada em pausa (pausou durante o carregamento, ou "Ouvir junto" espera o anfitrião): sai do "carregando"
+                if buffering && !sh.playing.load(Ordering::Relaxed) { buffering = false; emit("audio:state", json!({ "token": token, "state": "paused" })); }
             } else if let Some(p) = pending.as_mut().filter(|p| p.meta.token == token) {
                 p.duration = dur.or(p.duration);
             }

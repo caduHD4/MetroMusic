@@ -1,56 +1,76 @@
 # Changelog
 
-Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
+**English** · [Português (Brasil)](CHANGELOG.pt-BR.md)
+
+Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
+
+## 0.1.3
+
+Fixes for playback when the app opens and for Listen together.
+
+### Playback
+- **Music no longer starts "paused and silent" after opening the app.** The restored queue is now really loaded when you press play, and resumes from where you stopped. The same applies to a track that ended while autoplay was off.
+- Pausing, resuming or seeking while a track is still loading now takes effect. Before, the request was lost and the music started by itself, from the beginning.
+
+### Listen together
+- Joining in the middle of a song now starts **at the host's position** (it used to play from 0:00).
+- When someone joins the room, the song **no longer restarts** for the people already in it.
+- The host reports when the track has loaded, so the room starts playing right away instead of waiting 8 seconds on every track change.
+- The position follows the host's clock: if a track takes long to load, it jumps to where the host is, and a periodic check fixes drift over time.
+- Tested end to end against the real server (`pnpm test:net`), with the app as both host and guest.
+
+### Documentation
+- README and changelog are now in English by default, with the Portuguese version alongside.
 
 ## 0.1.2
 
-O AppImage do Linux agora usa a placa de vídeo.
+The Linux AppImage now uses the graphics card.
 
 ### Linux
-- **O AppImage é compilado no Ubuntu 24.04**, com o WebKit 2.52 embutido (antes vinha um WebKit mais antigo que, em alguns sistemas como CachyOS com placa NVIDIA, desenhava tudo pela CPU e deixava a interface lenta). Com o novo, o WebKit inicializa a GPU.
-- Em *Configurações › Aparência › Desempenho visual* agora aparece **qual placa de vídeo o app está usando** (ou "desenhando por software") e se o modo leve está ligado, para conferir na hora.
-- Requisito do pacote: sistemas com glibc 2.39 ou mais novo (Ubuntu 24.04+, Debian 13+, Fedora 40+, Arch e derivados). Em distribuições mais antigas, compile a partir do código.
+- **The AppImage is built on Ubuntu 24.04**, bundling WebKit 2.52 (before, it shipped an older WebKit that, on some systems such as CachyOS with an NVIDIA card, drew everything on the CPU and made the interface slow). With the new one, WebKit initializes the GPU.
+- *Settings › Appearance › Visual performance* now shows **which graphics card the app is using** (or "software rendering") and whether light mode is on, so you can check at a glance.
+- Package requirement: systems with glibc 2.39 or newer (Ubuntu 24.04+, Debian 13+, Fedora 40+, Arch and derivatives). On older distributions, build from source.
 
 ## 0.1.1
 
-Correção de desempenho: o app agora roda fluido em qualquer PC, inclusive sem placa de vídeo.
+Performance fix: the app now runs smoothly on any PC, including ones without a graphics card.
 
-### Desempenho
-- **Modo leve automático:** se o PC não tem GPU (desenho por software) ou o app percebe lentidão, ele desliga sozinho os desfoques gigantes, as sombras grandes, as animações decorativas e os vídeos de fundo. Quem tem GPU continua com todos os efeitos, sem mudança.
-- Nova opção em *Configurações › Aparência › Desempenho visual*: Automático (padrão), Completo ou Leve.
-- No modo leve, o fundo desfocado do Tocando agora vira um gradiente com a cor da capa, e a letra anima a 30 quadros por segundo.
-- Em qualquer PC: as animações pausam quando a janela está escondida ou sem foco, e o desfoque da letra só vale nas linhas próximas à atual.
-- Testado desenhando por software: o custo de CPU do Início caiu de 15% para 3% de um núcleo, e o do Tocando agora com desfoque em movimento, de 117% para 16%.
+### Performance
+- **Automatic light mode:** if the PC has no GPU (software rendering) or the app notices slowness, it turns off the giant blurs, large shadows, decorative animations and background videos by itself. People with a GPU keep all the effects, nothing changes.
+- New option in *Settings › Appearance › Visual performance*: Automatic (default), Full or Light.
+- In light mode, the blurred Now playing background becomes a gradient with the cover's color, and lyrics animate at 30 frames per second.
+- On any PC: animations pause when the window is hidden or unfocused, and the lyrics blur only applies to the lines near the current one.
+- Tested with software rendering: the CPU cost of Home dropped from 15% to 3% of one core, and Now playing with a moving blur from 117% to 16%.
 
 ### Linux
-- O AppImage traz o seu próprio WebKit e, em alguns sistemas (por exemplo com placa NVIDIA), ele não usa a GPU. O modo leve cobre esse caso. Quem prefere o WebKit do sistema pode usar o pacote `.deb` ou compilar a partir do código.
+- The AppImage ships its own WebKit and, on some systems (for example with an NVIDIA card), it does not use the GPU. Light mode covers that case. If you prefer the system WebKit, use the `.deb` package or build from source.
 
 ## 0.1.0
 
-Primeira versão pública do MetroMusic.
+First public release of MetroMusic.
 
-### Ouvir música
-- YouTube Music e SoundCloud tocam direto no app; escolha de fonte por faixa mostrando só resultados válidos.
-- Qualidade do áudio configurável, equalizador de 10 bandas, normalização, crossfade e reprodução sem pausa entre faixas.
-- Timer de sono, alarmes e sono automático.
+### Listening
+- YouTube Music and SoundCloud play directly in the app; per-track source choice showing only valid results.
+- Configurable audio quality, 10-band equalizer, normalization, crossfade and gapless playback between tracks.
+- Sleep timer, alarms and automatic sleep.
 
-### Letras
-- Letras sincronizadas palavra a palavra (BetterLyrics, LrcLib, KuGou, Spotify), com romanização (japonês, coreano, chinês, cirílico, hindi e punjabi) e tradução por IA.
+### Lyrics
+- Word-by-word synced lyrics (BetterLyrics, LrcLib, KuGou, Spotify), with romanization (Japanese, Korean, Chinese, Cyrillic, Hindi and Punjabi) and AI translation.
 
-### Contas e serviços
-- Entrar no YouTube Music, Spotify, SoundCloud e Last.fm; curtidas e playlists sincronizadas.
-- **Discord Rich Presence** sem configurar nada: mostra a música, o tempo e a pausa no seu perfil.
-- **Ouvir junto** com salas compatíveis com o MetroFuse e o Metrolist.
-- Spotify Canvas sobre a capa (com a conta do Spotify conectada).
+### Accounts and services
+- Sign in to YouTube Music, Spotify, SoundCloud and Last.fm; likes and playlists stay in sync.
+- **Discord Rich Presence** with no setup: shows the song, the time and the pause on your profile.
+- **Listen together** with rooms compatible with MetroFuse and Metrolist.
+- Spotify Canvas over the cover art (with a connected Spotify account).
 
-### Biblioteca
-- Downloads com título, artista, álbum, capa e letra gravados no arquivo.
-- Biblioteca local: varre suas pastas, lê as tags e acompanha mudanças.
-- Importar playlists de M3U, CSV e links do YouTube Music e do Spotify.
-- Backup e restauração.
+### Library
+- Downloads with title, artist, album, cover and lyrics written into the file.
+- Local library: scans your folders, reads the tags and follows changes.
+- Import playlists from M3U, CSV and YouTube Music and Spotify links.
+- Backup and restore.
 
-### Aparência
-- Temas, paletas, fundos "Galáxia" e desfocados, idiomas português e inglês.
+### Appearance
+- Themes, palettes, "Galaxy" and blurred backgrounds, Portuguese and English languages.
 
-### Atualizações
-- O app avisa quando há versão nova, mostra o que mudou e atualiza com um clique, sem instalador.
+### Updates
+- The app tells you when there is a new version, shows what changed and updates with one click, with no installer.

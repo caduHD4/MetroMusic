@@ -1,200 +1,202 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128@2x.png" alt="Ícone do MetroMusic" width="160" />
+**English** · [Português (Brasil)](README.pt-BR.md)
+
+<img src="src-tauri/icons/128x128@2x.png" alt="MetroMusic icon" width="160" />
 
 # MetroMusic
 
-### Player de música para desktop: YouTube Music, SoundCloud e Spotify num lugar só, com letras palavra a palavra, Discord e Ouvir junto.
+### Desktop music player: YouTube Music, SoundCloud and Spotify in one place, with word-by-word lyrics, Discord and Listen together.
 
 <br/>
 
-[![Última versão](https://img.shields.io/github/v/release/caduHD4/MetroMusic?style=for-the-badge&labelColor=0d1117&color=a78bfa)](https://github.com/caduHD4/MetroMusic/releases/latest)
-[![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-blue?style=for-the-badge&labelColor=0d1117)](LICENSE)
+[![Latest version](https://img.shields.io/github/v/release/caduHD4/MetroMusic?style=for-the-badge&labelColor=0d1117&color=a78bfa)](https://github.com/caduHD4/MetroMusic/releases/latest)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=for-the-badge&labelColor=0d1117)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/caduHD4/MetroMusic/total?style=for-the-badge&labelColor=0d1117)](https://github.com/caduHD4/MetroMusic/releases)
-[![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%C2%B7%20Windows-4c1d95?style=for-the-badge&labelColor=0d1117)](#instalar)
-[![CI](https://img.shields.io/github/actions/workflow/status/caduHD4/MetroMusic/ci.yml?branch=main&style=for-the-badge&labelColor=0d1117&label=testes)](https://github.com/caduHD4/MetroMusic/actions/workflows/ci.yml)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20Windows-4c1d95?style=for-the-badge&labelColor=0d1117)](#install)
+[![CI](https://img.shields.io/github/actions/workflow/status/caduHD4/MetroMusic/ci.yml?branch=main&style=for-the-badge&labelColor=0d1117&label=tests)](https://github.com/caduHD4/MetroMusic/actions/workflows/ci.yml)
 
 <br/>
 
-[**Telas**](#telas) · [**Recursos**](#recursos) · [**Instalar**](#instalar) · [**Atualizações**](#atualiza%C3%A7%C3%B5es-autom%C3%A1ticas) · [**Serviços**](#contas-e-servi%C3%A7os) · [**Compilar**](#compilar) · [**Créditos**](#cr%C3%A9ditos)
+[**Screenshots**](#screenshots) · [**Features**](#features) · [**Install**](#install) · [**Updates**](#automatic-updates) · [**Services**](#accounts-and-services) · [**Build**](#build) · [**Credits**](#credits)
 
 </div>
 
 > [!WARNING]
-> O MetroMusic conecta a serviços de terceiros escolhidos por você. Disponibilidade, qualidade, catálogo, login e acesso por região podem mudar a qualquer momento e podem exigir a sua própria conta. É um projeto independente e não oficial, sem vínculo com YouTube, Google, Spotify, Discord, SoundCloud ou qualquer outro serviço citado.
+> MetroMusic connects to third-party services chosen by you. Availability, quality, catalog, login and regional access may change at any time and may require your own account. It is an independent, unofficial project, with no affiliation with YouTube, Google, Spotify, Discord, SoundCloud or any other service mentioned.
 
 ---
 
-## Telas
+## Screenshots
 
 <div align="center">
 
-<img src="docs/screenshots/01-inicio.png" alt="Início" width="100%" />
+<img src="docs/screenshots/01-inicio.png" alt="Home" width="100%" />
 
-<sub>**Início:** o conteúdo da sua conta do YouTube Music (ou de outra fonte), com atalhos por humor.</sub>
-
-<br/><br/>
-
-<img src="docs/screenshots/02-tocando-agora.png" alt="Tocando agora, com letra sincronizada" width="100%" />
-
-<sub>**Tocando agora:** letra palavra a palavra, fundo "Galáxia" que acompanha a capa e a linha da letra sob a capa.</sub>
+<sub>**Home:** the content of your YouTube Music account (or another source), with mood shortcuts.</sub>
 
 <br/><br/>
 
-<img src="docs/screenshots/03-biblioteca.png" alt="Biblioteca" width="49%" />
-<img src="docs/screenshots/04-explorar.png" alt="Explorar" width="49%" />
+<img src="docs/screenshots/02-tocando-agora.png" alt="Now playing, with synced lyrics" width="100%" />
 
-<img src="docs/screenshots/06-equalizador.png" alt="Equalizador" width="49%" />
-<img src="docs/screenshots/05-configuracoes.png" alt="Configurações" width="49%" />
+<sub>**Now playing:** word-by-word lyrics, a "Galaxy" background that follows the cover art, and the lyric line under the cover.</sub>
 
-<img src="docs/screenshots/08-boas-vindas.png" alt="Boas-vindas: conectar os serviços" width="49%" />
-<img src="docs/screenshots/07-atualizacao.png" alt="Aviso de atualização com o que mudou" width="49%" />
+<br/><br/>
+
+<img src="docs/screenshots/03-biblioteca.png" alt="Library" width="49%" />
+<img src="docs/screenshots/04-explorar.png" alt="Explore" width="49%" />
+
+<img src="docs/screenshots/06-equalizador.png" alt="Equalizer" width="49%" />
+<img src="docs/screenshots/05-configuracoes.png" alt="Settings" width="49%" />
+
+<img src="docs/screenshots/08-boas-vindas.png" alt="Welcome: connect your services" width="49%" />
+<img src="docs/screenshots/07-atualizacao.png" alt="Update notice with what changed" width="49%" />
 
 </div>
 
 ---
 
-## O que é o MetroMusic?
+## What is MetroMusic?
 
-Um player de música para o desktop, feito com **Tauri (Rust)** e **React**, inspirado no [MetroFuse](https://github.com/956tris/MetroFuse) e no [Metrolist](https://github.com/MetrolistGroup/Metrolist). Ele junta várias fontes de áudio e de catálogo em uma só interface, toca com um motor próprio (equalizador, normalização, crossfade e reprodução sem pausa) e se integra ao Discord, ao Last.fm e ao Spotify.
+A desktop music player built with **Tauri (Rust)** and **React**, inspired by [MetroFuse](https://github.com/956tris/MetroFuse) and [Metrolist](https://github.com/MetrolistGroup/Metrolist). It brings several audio and catalog sources into a single interface, plays with its own engine (equalizer, normalization, crossfade and gapless playback) and integrates with Discord, Last.fm and Spotify.
 
-Tudo o que precisa de conta é opcional: dá para usar só com a busca e a reprodução.
-
----
-
-## Recursos
-
-| Reprodução | Descoberta |
-| --- | --- |
-| Motor de áudio próprio em Rust (equalizador de 10 bandas, normalização, crossfade, gapless) | Início, Explorar e páginas de artista/álbum do YouTube Music |
-| Escolha da fonte de áudio por faixa, mostrando só resultados válidos | Busca de músicas, álbuns, artistas e playlists |
-| Cache de músicas e de capas em disco, com limite | Importar playlists de M3U, CSV e links do YouTube Music e do Spotify |
-| Downloads com título, artista, álbum, capa e letra gravados no arquivo | Biblioteca local: varre suas pastas e acompanha mudanças |
-| Timer de sono, alarmes e sono automático | Histórico de escuta e estatísticas |
-
-| Letras | Integrações |
-| --- | --- |
-| Letra sincronizada palavra a palavra (BetterLyrics, LrcLib, KuGou e Spotify) | **Discord Rich Presence** sem configurar nada, com tempo e pausa |
-| Romanização: japonês, coreano, chinês, cirílico, hindi e punjabi | **Ouvir junto**, compatível com as salas do MetroFuse e do Metrolist |
-| Tradução por IA (OpenRouter, OpenAI, Claude, Gemini, DeepL e outros) | YouTube Music, Spotify, SoundCloud e Last.fm: curtidas e playlists sincronizadas |
-| `.lrc` ao lado do arquivo ou letra gravada na tag, para a biblioteca local | Spotify Canvas sobre a capa (com a conta do Spotify) |
-
-| Aparência | Sistema |
-| --- | --- |
-| Temas, paletas e fundos "Galáxia" e desfocados | Atualização automática pelo GitHub, sem instalador |
-| Modo leve automático para PCs sem placa de vídeo | Bandeja, atalhos globais, mídia do sistema (MPRIS) |
-| Idiomas: português e inglês | Bandeja, atalhos globais, mídia do sistema (MPRIS), iniciar com o sistema |
-| Backup e restauração das suas coisas | Proxy HTTP e SOCKS5, configurações em arquivo e segredos separados |
+Everything that needs an account is optional: you can use it with just search and playback.
 
 ---
 
-## Instalar
+## Features
 
-Baixe a versão mais recente na [página de releases](https://github.com/caduHD4/MetroMusic/releases/latest).
+| Playback | Discovery |
+| --- | --- |
+| Own audio engine in Rust (10-band equalizer, normalization, crossfade, gapless) | Home, Explore and artist/album pages from YouTube Music |
+| Per-track audio source choice, showing only valid results | Search for songs, albums, artists and playlists |
+| Song and cover cache on disk, with a size limit | Import playlists from M3U, CSV and YouTube Music and Spotify links |
+| Downloads with title, artist, album, cover and lyrics written into the file | Local library: scans your folders and follows changes |
+| Sleep timer, alarms and automatic sleep | Listening history and statistics |
 
-| Sistema | Arquivo | Observação |
+| Lyrics | Integrations |
+| --- | --- |
+| Word-by-word synced lyrics (BetterLyrics, LrcLib, KuGou and Spotify) | **Discord Rich Presence** with no setup, with time and pause |
+| Romanization: Japanese, Korean, Chinese, Cyrillic, Hindi and Punjabi | **Listen together**, compatible with MetroFuse and Metrolist rooms |
+| AI translation (OpenRouter, OpenAI, Claude, Gemini, DeepL and others) | YouTube Music, Spotify, SoundCloud and Last.fm: likes and playlists in sync |
+| `.lrc` next to the file or lyrics saved in the tag, for the local library | Spotify Canvas over the cover (with a Spotify account) |
+
+| Appearance | System |
+| --- | --- |
+| Themes, palettes and "Galaxy" and blurred backgrounds | Automatic updates through GitHub, no installer |
+| Automatic light mode for PCs without a graphics card | Tray, global shortcuts, system media controls (MPRIS), launch at login |
+| Languages: Portuguese and English | HTTP and SOCKS5 proxy, settings in a file and secrets kept apart |
+| Backup and restore of your data | |
+
+---
+
+## Install
+
+Download the latest version from the [releases page](https://github.com/caduHD4/MetroMusic/releases/latest).
+
+| System | File | Note |
 | --- | --- | --- |
-| **Linux** | `MetroMusic_*_amd64.AppImage` | Recomendado: é o que se **atualiza sozinho**. Dê permissão (`chmod +x`) e abra. |
-| Linux (Debian/Ubuntu) | `MetroMusic_*_amd64.deb` | Instala no sistema, mas as atualizações automáticas pedem permissão de administrador, então ele não se atualiza sozinho. |
-| **Windows** | `MetroMusic_*_x64-setup.exe` | O primeiro uso instala normalmente; **as atualizações seguintes são silenciosas**. |
+| **Linux** | `MetroMusic_*_amd64.AppImage` | Recommended: it is the one that **updates itself**. Give it permission (`chmod +x`) and open it. |
+| Linux (Debian/Ubuntu) | `MetroMusic_*_amd64.deb` | Installs system-wide, but automatic updates need administrator permission, so it does not update itself. |
+| **Windows** | `MetroMusic_*_x64-setup.exe` | The first run installs normally; **later updates are silent**. |
 
-macOS ainda não tem pacote.
+There is no macOS package yet.
 
-### Aviso do Windows ("Fornecedor desconhecido")
+### Windows warning ("Unknown publisher")
 
-Ao abrir o instalador, o Windows Defender SmartScreen pode mostrar **"O Windows protegeu o computador"** e **"Fornecedor desconhecido"**. Isso acontece porque o instalador ainda **não tem assinatura de código** (um certificado pago, que projetos novos e gratuitos costumam não ter), e não porque algo esteja errado com o arquivo. Para continuar:
+When you open the installer, Windows Defender SmartScreen may show **"Windows protected your PC"** and **"Unknown publisher"**. This happens because the installer does **not have a code signature yet** (a paid certificate that new, free projects usually do not have), not because something is wrong with the file. To continue:
 
-1. Clique em **Mais informações**.
-2. Clique em **Executar assim mesmo**.
+1. Click **More info**.
+2. Click **Run anyway**.
 
-O código é aberto e cada pacote da release é assinado com a chave do projeto (é essa assinatura que o atualizador confere). Quem preferir pode compilar a partir do código-fonte (veja [Compilar](#compilar)).
+The code is open source and every package in the release is signed with the project's key (that signature is what the updater checks). If you prefer, build from source (see [Build](#build)).
 
-### Dependências no Linux
+### Linux dependencies
 
-O AppImage é compilado no Ubuntu 24.04, então pede **glibc 2.39 ou mais nova** (Ubuntu 24.04+, Debian 13+, Fedora 40+, Arch e derivados como o CachyOS). Em distribuições mais antigas, compile a partir do código. O AppImage já traz quase tudo. Para o áudio e a bandeja, o sistema precisa de `alsa` (ou PipeWire com `pipewire-alsa`) e do `libayatana-appindicator`.
-
----
-
-## Atualizações automáticas
-
-O MetroMusic se atualiza como o Discord: **sem assistente de instalação**.
-
-1. Ao abrir (e a cada 6 horas), o app procura uma versão nova no GitHub.
-2. Se houver, aparece um **aviso pequeno com o que mudou** e o botão **Atualizar**.
-3. Ao clicar, ele baixa em segundo plano, troca os arquivos e **reinicia sozinho**.
-
-Detalhes:
-
-- A branch **`main` é o canal estável**: a atualização vem sempre da última release publicada.
-- Cada pacote é **assinado**; o app só instala o que bate com a chave pública embutida nele.
-- Dá para **pular uma versão** ou desligar o aviso em *Configurações › Atualizações*, e procurar manualmente quando quiser.
+The AppImage is built on Ubuntu 24.04, so it needs **glibc 2.39 or newer** (Ubuntu 24.04+, Debian 13+, Fedora 40+, Arch and derivatives such as CachyOS). On older distributions, build from source. The AppImage already bundles almost everything. For audio and the tray, the system needs `alsa` (or PipeWire with `pipewire-alsa`) and `libayatana-appindicator`.
 
 ---
 
-## Contas e serviços
+## Automatic updates
 
-Na primeira vez que você abre o app, uma tela mostra como conectar os serviços. Tudo é opcional e dá para fazer depois em *Configurações › Integrações*.
+MetroMusic updates itself like Discord does: **with no install wizard**.
 
-| Serviço | O que faz | Precisa de login? |
+1. On launch (and every 6 hours), the app looks for a new version on GitHub.
+2. If there is one, a **small notice with what changed** appears, with an **Update** button.
+3. When you click it, the app downloads in the background, swaps the files and **restarts by itself**.
+
+Details:
+
+- The **`main` branch is the stable channel**: updates always come from the latest published release.
+- Every package is **signed**; the app only installs what matches the public key embedded in it.
+- You can **skip a version** or turn the notice off in *Settings › Updates*, and check manually whenever you want.
+
+---
+
+## Accounts and services
+
+The first time you open the app, a screen shows how to connect the services. Everything is optional and can be done later in *Settings › Integrations*.
+
+| Service | What it does | Login needed? |
 | --- | --- | --- |
-| **YouTube Music** | Fonte principal de áudio. Início, playlists e curtidas da sua conta | Opcional |
-| **Spotify** | Sua biblioteca e playlists, letras e Canvas | Opcional |
-| **Discord** | Mostra no perfil o que você ouve, com o tempo e a pausa | **Não**: basta deixar o Discord aberto |
-| SoundCloud | Fonte de áudio e curtidas | Opcional |
-| Last.fm | Scrobbling e "tocando agora" | Opcional |
+| **YouTube Music** | Main audio source. Home, playlists and likes from your account | Optional |
+| **Spotify** | Your library and playlists, lyrics and Canvas | Optional |
+| **Discord** | Shows on your profile what you are listening to, with time and pause | **No**: just leave Discord open |
+| SoundCloud | Audio source and likes | Optional |
+| Last.fm | Scrobbling and "now playing" | Optional |
 
-Sessões e chaves ficam **só no seu computador**, em um arquivo separado (permissão `0600`).
+Sessions and keys stay **only on your computer**, in a separate file (permission `0600`).
 
-**Indisponíveis por enquanto:** TIDAL, Qobuz e Deezer (áudio protegido).
+**Unavailable for now:** TIDAL, Qobuz and Deezer (protected audio).
 
 ---
 
-## Compilar
+## Build
 
-Pré-requisitos: [Node.js](https://nodejs.org) 22+, [pnpm](https://pnpm.io), [Rust](https://rustup.rs) e as [dependências do Tauri](https://v2.tauri.app/start/prerequisites/) do seu sistema. No Linux também: `libasound2-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`.
+Prerequisites: [Node.js](https://nodejs.org) 22+, [pnpm](https://pnpm.io), [Rust](https://rustup.rs) and the [Tauri dependencies](https://v2.tauri.app/start/prerequisites/) for your system. On Linux also: `libasound2-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`.
 
 ```bash
 pnpm install
-pnpm tauri dev      # abre o app em modo de desenvolvimento
-pnpm tauri build    # gera os pacotes (precisa das chaves de assinatura para o atualizador)
+pnpm tauri dev      # opens the app in development mode
+pnpm tauri build    # builds the packages (needs the signing keys for the updater)
 ```
 
-### Testes
+### Tests
 
 ```bash
-pnpm exec tsc --noEmit            # tipos
-node --test scripts/tests/*.test.mjs   # testes da interface (lógica pura)
-cd src-tauri && cargo test --lib       # testes do backend
-pnpm test:net                          # Ouvir junto contra o servidor real (precisa de internet)
+pnpm exec tsc --noEmit                 # types
+node --test scripts/tests/*.test.mjs   # interface tests (logic and player)
+cd src-tauri && cargo test --lib       # backend tests
+pnpm test:net                          # Listen together against the real server (needs internet)
 ```
 
-Há também testes de rede (`cargo test net_ -- --ignored`) que falam com os serviços de verdade.
+There are also network tests (`cargo test net_ -- --ignored`) that talk to the real services.
 
-### Como lançar uma versão
+### How to release a version
 
-1. Aumente a versão em `package.json`, `src-tauri/Cargo.toml` e `src-tauri/tauri.conf.json`.
-2. Descreva as mudanças em uma nova seção `## x.y.z` do [`CHANGELOG.md`](CHANGELOG.md): é o texto que aparece no aviso de atualização.
-3. Faça o merge na `main` e crie a tag: `git tag vx.y.z && git push origin vx.y.z`.
-4. O GitHub Actions compila, assina e publica a release com o `latest.json` que o app usa.
+1. Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`.
+2. Describe the changes in a new `## x.y.z` section (in both files) of [`CHANGELOG.md`](CHANGELOG.md) and [`CHANGELOG.pt-BR.md`](CHANGELOG.pt-BR.md): it is the text shown in the update notice.
+3. Merge into `main` and create the tag: `git tag vx.y.z && git push origin vx.y.z`.
+4. GitHub Actions builds, signs and publishes the release with the `latest.json` the app uses.
 
-As chaves de assinatura (`TAURI_SIGNING_PRIVATE_KEY` e a senha) ficam nos *secrets* do repositório. **Guarde uma cópia da chave privada**: sem ela, as versões antigas não aceitam mais atualizações.
-
----
-
-## Documentação
-
-- [`docs/BACKEND.md`](docs/BACKEND.md): como o backend em Rust é organizado.
-- [`docs/CONFIGURACOES-AUDITORIA.md`](docs/CONFIGURACOES-AUDITORIA.md): tudo o que cada configuração faz, como foi validado e o que ainda está "Em breve".
+The signing keys (`TAURI_SIGNING_PRIVATE_KEY` and its password) live in the repository *secrets*. **Keep a copy of the private key**: without it, old versions will no longer accept updates.
 
 ---
 
-## Créditos
+## Documentation
 
-- [MetroFuse](https://github.com/956tris/MetroFuse), [MetroFuse+](https://github.com/caduHD4/MetroFusePlus) e [Metrolist](https://github.com/MetrolistGroup/Metrolist): a base de ideias e de integrações (letras, Ouvir junto, provedores).
-- [InnerTune](https://github.com/z-huang/InnerTune) e [OuterTune](https://github.com/DD3Boh/OuterTune), de onde o Metrolist vem.
-- Letras: [BetterLyrics](https://github.com/boidushya/better-lyrics), [LrcLib](https://lrclib.net), KuGou e Spotify.
-- Feito com [Tauri](https://tauri.app), [React](https://react.dev), [Symphonia](https://github.com/pdeljanov/Symphonia), [lofty](https://github.com/Serial-ATA/lofty-rs) e [protobuf.js](https://github.com/protobufjs/protobuf.js).
+- [`docs/BACKEND.md`](docs/BACKEND.md): how the Rust backend is organized (in Portuguese).
+- [`docs/CONFIGURACOES-AUDITORIA.md`](docs/CONFIGURACOES-AUDITORIA.md): what every setting does, how it was validated and what is still "Coming soon" (in Portuguese).
 
-## Licença
+---
 
-[GPL-3.0](LICENSE), a mesma licença do MetroFuse e do Metrolist.
+## Credits
+
+- [MetroFuse](https://github.com/956tris/MetroFuse), [MetroFuse+](https://github.com/caduHD4/MetroFusePlus) and [Metrolist](https://github.com/MetrolistGroup/Metrolist): the base of ideas and integrations (lyrics, Listen together, providers).
+- [InnerTune](https://github.com/z-huang/InnerTune) and [OuterTune](https://github.com/DD3Boh/OuterTune), where Metrolist comes from.
+- Lyrics: [BetterLyrics](https://github.com/boidushya/better-lyrics), [LrcLib](https://lrclib.net), KuGou and Spotify.
+- Built with [Tauri](https://tauri.app), [React](https://react.dev), [Symphonia](https://github.com/pdeljanov/Symphonia), [lofty](https://github.com/Serial-ATA/lofty-rs) and [protobuf.js](https://github.com/protobufjs/protobuf.js).
+
+## License
+
+[GPL-3.0](LICENSE), the same license as MetroFuse and Metrolist.

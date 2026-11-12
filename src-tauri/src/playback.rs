@@ -23,6 +23,14 @@ struct Current {
     cancel: Arc<AtomicBool>,
 }
 
+/// O que o usuário pediu enquanto a faixa ainda carrega (resolver o stream e baixar o começo leva alguns segundos).
+/// O motor só recebe a faixa no fim disso; pausar ou buscar antes se perdia, e a música começava tocando, do zero.
+struct Loading {
+    token: u64,
+    start: f64,
+    autoplay: bool,
+}
+
 pub struct Player {
     pub cache: Arc<Cache>,
     preload: Arc<Preloader>,
@@ -32,6 +40,8 @@ pub struct Player {
     /// Token da reprodução pedida por último (`play`/`stop`): o que for mais antigo que isto foi superado.
     play_gen: AtomicU64,
     current: Mutex<Option<Current>>,
+    /// Pedido da faixa que ainda está carregando (`None` quando o motor já a recebeu).
+    loading: Mutex<Option<Loading>>,
     /// Próxima faixa, já carregada no segundo buffer do motor.
     next: Mutex<Option<Current>>,
     next_gen: AtomicU64,
@@ -52,7 +62,7 @@ impl Player {
                 Ok(e) => Some(e),
                 Err(e) => { eprintln!("[áudio] motor indisponível: {e}"); None }
             };
-            Player { preload: Preloader::new(cache.clone()), cache, engine, emit, token: AtomicU64::new(0), play_gen: AtomicU64::new(0), current: Mutex::new(None), next: Mutex::new(None), next_gen: AtomicU64::new(0) }
+            Player { preload: Preloader::new(cache.clone()), cache, engine, emit, token: AtomicU64::new(0), play_gen: AtomicU64::new(0), current: Mutex::new(None), loading: Mutex::new(None), next: Mutex::new(None), next_gen: AtomicU64::new(0) }
         })
     }
 
@@ -84,10 +94,12 @@ impl Player {
             prev.cancel.store(true, Ordering::Relaxed);
             self.cache.lower_target(&prev.entry, prev.entry.have());
         }
+        *self.loading.lock() = Some(Loading { token, start, autoplay });
         (self.emit)("audio:state", json!({ "token": token, "state": "loading", "key": track.key() }));
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = me.start_track(token, track, start, autoplay, order).await {
+                { let mut l = me.loading.lock(); if l.as_ref().map_or(false, |x| x.token == token) { *l = None; } }
                 if me.play_gen.load(Ordering::SeqCst) == token {
                     (me.emit)("audio:state", json!({ "token": token, "state": "error", "message": e }));
                 }
@@ -115,18 +127,33 @@ impl Player {
         let open: Box<dyn Fn() -> std::io::Result<crate::cache::Reader> + Send> = Box::new(move || e2.reader(c2.clone()));
         let meta = LoadMeta { token, key: track.key(), source, codec, bitrate, duration_hint: track.duration_ms.map(|d| d as f64 / 1000.0), loudness };
         let ext = entry.ext.clone();
+        // Entrega ao motor já com o que o usuário pediu nesse meio-tempo (pausar, retomar, buscar).
+        // O cadeado segura até o envio para um `pause`/`seek` não passar entre a leitura e o `load`.
+        let mut pending = self.loading.lock();
+        let (start, autoplay) = match pending.take() { Some(l) if l.token == token => (l.start, l.autoplay), _ => (start, autoplay) };
         *self.current.lock() = Some(Current { track, entry, cancel: cancel.clone() });
         self.engine()?.load(open, ext, start, autoplay, cancel, meta);
+        drop(pending);
         self.cache.trim(&self.protected());
         Ok(())
     }
 
-    pub fn pause(&self) -> Res<()> { self.engine()?.pause(); Ok(()) }
-    pub fn resume(&self) -> Res<()> { self.engine()?.resume(); Ok(()) }
-    pub fn seek(&self, secs: f64) -> Res<()> { self.engine()?.seek(secs); Ok(()) }
+    pub fn pause(&self) -> Res<()> {
+        if let Some(l) = self.loading.lock().as_mut() { l.autoplay = false; return Ok(()); }
+        self.engine()?.pause(); Ok(())
+    }
+    pub fn resume(&self) -> Res<()> {
+        if let Some(l) = self.loading.lock().as_mut() { l.autoplay = true; return Ok(()); }
+        self.engine()?.resume(); Ok(())
+    }
+    pub fn seek(&self, secs: f64) -> Res<()> {
+        if let Some(l) = self.loading.lock().as_mut() { l.start = secs.max(0.0); return Ok(()); }
+        self.engine()?.seek(secs); Ok(())
+    }
     pub fn set_volume(&self, v: f32) -> Res<()> { self.engine()?.set_volume(v); Ok(()) }
     pub fn set_speed(&self, s: f32) -> Res<()> { self.engine()?.set_speed(s); Ok(()) }
     pub fn stop(&self) -> Res<()> {
+        *self.loading.lock() = None;
         self.play_gen.store(self.token.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
         self.next_gen.fetch_add(1, Ordering::SeqCst);
         if let Some(n) = self.next.lock().take() { n.cancel.store(true, Ordering::Relaxed); }

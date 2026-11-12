@@ -42,6 +42,28 @@ let me: { token: string | null; name: string } = { token: null, name: "" };
 let hostSeq = 0, applying = false, reconnects = 0, wantRoom = false;
 let lastSent = { id: "", playing: false, pos: 0, at: 0, vol: -1, queue: "" };
 let bufferTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Relógio do anfitrião, como o convidado o conhece: em `at` (hora local) a faixa `id` estava em `pos` segundos,
+ * tocando ou pausada. A posição esperada agora sai daí, então a ordem em que as mensagens chegam e o tempo que a
+ * faixa leva para carregar não desalinham ninguém: ao ficar pronta, a faixa pula para onde o anfitrião está.
+ */
+let clock: { id: string; pos: number; at: number; playing: boolean } | null = null;
+let followTimer: ReturnType<typeof setTimeout> | undefined, driftTimer: ReturnType<typeof setInterval> | undefined;
+const curIdNow = () => { const p = usePlayer.getState(); return p.queue[p.index]; };
+/** Quando a faixa `id` termina de carregar, avisa o servidor (`buffer_ready`). Todos da sala fazem isso, o anfitrião também. */
+function whenLoaded(id: string) {
+  clearTimeout(bufferTimer);
+  const t0 = Date.now();
+  const poll = () => {
+    const s = usePlayer.getState();
+    if (curIdNow() !== id) return; // a faixa mudou de novo: quem a trocou cuida da nova
+    if (!s.buffering) return void client?.send("buffer_ready", { trackId: id.replace(/^youtube:/, "") });
+    if (Date.now() - t0 < 25000) bufferTimer = setTimeout(poll, 250);
+  };
+  poll();
+}
+
+const hostPos = () => (clock ? (clock.playing ? clock.pos + (Date.now() - clock.at) / 1000 : clock.pos) : 0);
 
 function serverUrl() {
   const s = String(getSetting("ltServer") ?? "meowery");
@@ -54,23 +76,62 @@ const isBlocked = (name: string) => blockedNow().some((b) => b.toLowerCase() ===
 export const useLT = create<LT>((set, get) => {
   const send = (type: string, payload?: Record<string, unknown>) => client?.send(type, payload) ?? false;
   const reset = () => set({ room: null, role: null, waiting: false, userId: null, members: [], requests: [], suggestions: [] });
-  const resetSession = () => { me.token = null; wantRoom = false; hostSeq = 0; lastSent = { id: "", playing: false, pos: 0, at: 0, vol: -1, queue: "" }; };
+  const resetSession = () => { me.token = null; wantRoom = false; hostSeq = 0; clock = null; clearTimeout(followTimer); clearInterval(driftTimer); driftTimer = undefined; lastSent = { id: "", playing: false, pos: 0, at: 0, vol: -1, queue: "" }; };
   const players = () => usePlayer.getState();
   const curId = () => { const p = players(); return p.queue[p.index]; };
+
+  /** Metade da ida e volta até o servidor: o tempo que uma mensagem levou para chegar. */
+  const lagSec = () => (client?.latency ?? 0) / 2000;
+  const setClock = (id: string, pos: number, playing: boolean) => { clock = { id, pos, at: Date.now(), playing }; };
+
+  /** Coloca a faixa da sala para carregar, parada: quem manda tocar, e de onde, é o relógio do anfitrião. */
+  function loadTrack(info: TrackInfoMsg, queue: TrackInfoMsg[] = []) {
+    const t = registerTrack(fromTrackInfo(info));
+    const ids = [t.id, ...queue.map((q) => registerTrack(fromTrackInfo(q)).id)];
+    if (curId() !== t.id) players().play(ids, 0, "Ouvir junto", { shuffle: false, paused: true });
+    else syncQueue(queue);
+    return t.id;
+  }
+
+  /**
+   * Leva este player ao relógio do anfitrião: espera a faixa ficar pronta e então ajusta a posição e o tocar/pausar.
+   * Chamado a cada mudança do relógio e, de novo, quando a faixa termina de carregar.
+   */
+  function follow() {
+    clearTimeout(followTimer);
+    const t0 = Date.now();
+    const step = () => {
+      const c = clock;
+      if (!c || get().role !== "guest") return;
+      const s = usePlayer.getState();
+      if (curId() !== c.id || s.buffering) { if (Date.now() - t0 < 25000) followTimer = setTimeout(step, 250); return; }
+      applying = true;
+      try {
+        const want = hostPos();
+        if (Math.abs(s.position - want) > 1.2) s.seek(want);
+        if (usePlayer.getState().playing !== c.playing) usePlayer.getState().toggle();
+      } finally { setTimeout(() => { applying = false; }, 900); }
+    };
+    step();
+    // sem o anfitrião avisar, a posição se afasta (travadas, rede lenta): confere de tempos em tempos
+    if (!driftTimer) driftTimer = setInterval(() => {
+      const c = clock, s = usePlayer.getState();
+      if (!c || get().role !== "guest" || !c.playing || s.buffering || !s.playing || curId() !== c.id) return;
+      if (Math.abs(s.position - hostPos()) > 2.5) { applying = true; s.seek(hostPos()); setTimeout(() => { applying = false; }, 900); }
+    }, 4000);
+  }
 
   /** Aplica o estado da sala neste player (convidado): faixa, posição, tocando ou pausado, fila. */
   function applyRoom(state: Pick<RoomStateMsg, "currentTrack" | "isPlaying" | "position" | "queue" | "volume"> & { lastUpdate?: number }) {
     applying = true;
     try {
       const P = players();
-      const lag = state.lastUpdate && state.isPlaying ? Math.max(0, Date.now() - state.lastUpdate) : 0; // o servidor informa quando o estado foi tirado
-      const pos = (state.position + Math.min(lag, 5000)) / 1000;
       if (state.currentTrack?.id) {
-        const t = registerTrack(fromTrackInfo(state.currentTrack));
-        if (curId() !== t.id) P.play([t.id, ...(state.queue ?? []).map((q) => registerTrack(fromTrackInfo(q)).id)], 0, "Ouvir junto");
-        else syncQueue(state.queue);
-        const wait = () => { const s = usePlayer.getState(); if (curId() !== t.id) return; if (Math.abs(s.position - pos) > 1.5) s.seek(pos); if (s.playing !== state.isPlaying) s.toggle(); };
-        setTimeout(wait, 400);
+        const fresh = curId() !== registerTrack(fromTrackInfo(state.currentTrack)).id;
+        const id = loadTrack(state.currentTrack, state.queue);
+        setClock(id, state.position / 1000 + (state.isPlaying ? lagSec() : 0), state.isPlaying);
+        if (fresh) whenLoaded(id); // avisa que carregou: o servidor responde com a posição certa (útil a quem chega no meio da música)
+        follow();
       }
       if (getSetting("ltSyncVolume") && typeof state.volume === "number" && state.volume >= 0) P.setVolume(state.volume);
     } finally { setTimeout(() => { applying = false; }, 900); }
@@ -82,17 +143,6 @@ export const useLT = create<LT>((set, get) => {
     if (want.join() === upcoming.join()) return;
     P.reorder([...P.queue.slice(0, P.index + 1), ...want]);
   }
-  function whenLoaded(id: string) {
-    clearTimeout(bufferTimer);
-    const t0 = Date.now();
-    const poll = () => {
-      const s = usePlayer.getState();
-      if (curId() === id && !s.buffering) return void send("buffer_ready", { trackId: id.replace(/^youtube:/, "") });
-      if (Date.now() - t0 < 20000) bufferTimer = setTimeout(poll, 300);
-    };
-    poll();
-  }
-
   function onMessage(type: string, p: any) {
     const L = get();
     switch (type) {
@@ -120,13 +170,16 @@ export const useLT = create<LT>((set, get) => {
       }
       case "user_joined":
         set((s) => ({ requests: s.requests.filter((r) => r.id !== p.userId), members: s.members.some((m) => m.id === p.userId) ? s.members : [...s.members, { id: p.userId, name: p.username, hue: hueOf(p.username), online: true }] }));
+        // quem chegou já recebe a faixa e a posição no estado da sala (join_approved); reenviar a troca de faixa a todos a reiniciaria
         L.log(`${p.username} entrou na sala`); toast(`${p.username} entrou na sala`);
-        if (get().role === "host") broadcastNow(true); // quem chegou precisa saber o que toca
         break;
       case "user_left": set((s) => ({ members: s.members.filter((m) => m.id !== p.userId) })); L.log(`${p.username} saiu da sala`); break;
       case "user_disconnected": set((s) => ({ members: s.members.map((m) => (m.id === p.userId ? { ...m, online: false } : m)) })); L.log(`${p.username} perdeu a conexão`); break;
       case "user_reconnected": set((s) => ({ members: s.members.map((m) => (m.id === p.userId ? { ...m, online: true } : m)) })); L.log(`${p.username} voltou`); break;
       case "host_changed":
+        { const iAmHost = p.newHostId === get().userId;
+          if (iAmHost) { const P = players(); lastSent = { id: curId() ?? "", playing: P.playing, pos: P.position, at: Date.now(), vol: -1, queue: "" }; clock = null; }
+          else if (get().role === "host") setTimeout(() => send("request_sync"), 300); }
         set((s) => ({ role: p.newHostId === s.userId ? "host" : "guest", members: s.members.map((m) => ({ ...m, host: m.id === p.newHostId })) }));
         L.log(`${p.newHostName} agora é o anfitrião`); toast(`${p.newHostName} agora é o anfitrião`);
         break;
@@ -147,7 +200,7 @@ export const useLT = create<LT>((set, get) => {
       case "suggestion_approved": toast(`Sugestão aprovada: ${p.trackInfo?.title ?? ""}`); L.log("Sua sugestão foi aprovada"); break;
       case "suggestion_rejected": toast(p.reason ? `Sugestão recusada: ${p.reason}` : "Sua sugestão foi recusada"); break;
       case "reconnected": reconnects = 0; set({ room: p.roomCode, userId: p.userId, role: p.isHost ? "host" : "guest", members: (p.state.users ?? []).map((u: UserInfoMsg) => toMember(u, p.userId)) }); L.log("Reconectado à sala"); if (!p.isHost) applyRoom(p.state); break;
-      case "error": L.log(`Erro do servidor: ${p.code} ${p.message}`); set({ waiting: false }); toast(describeError(p.code, p.message)); if (/token|session|reconnect/i.test(`${p.code}${p.message}`) && wantRoom) { reset(); resetSession(); } break;
+      case "error": L.log(`Erro do servidor: ${p.code} ${p.message}`); if (p.code === "stale_track") break; /* a faixa já mudou: normal ao trocar rápido */ set({ waiting: false }); toast(describeError(p.code, p.message)); if (/token|session|reconnect/i.test(`${p.code}${p.message}`) && wantRoom) { reset(); resetSession(); } break;
       case "server_restarting": toast("O servidor vai reiniciar; a sala será retomada"); break;
       case "pong": set({ latency: client?.latency ?? null }); break;
     }
@@ -157,12 +210,19 @@ export const useLT = create<LT>((set, get) => {
     applying = true;
     try {
       const P = players();
-      const lag = (client?.latency ?? 0) / 2;
+      const cur = P.queue[P.index];
       switch (p.action) {
-        case "change_track": if (p.trackInfo?.id) { const t = registerTrack(fromTrackInfo(p.trackInfo)); P.play([t.id], 0, "Ouvir junto"); if (usePlayer.getState().playing) usePlayer.getState().toggle(); whenLoaded(t.id); } break;
-        case "play": { const pos = (p.position + lag) / 1000; if (Math.abs(P.position - pos) > 1.2) P.seek(pos); if (!P.playing) P.toggle(); break; }
-        case "pause": if (P.playing) P.toggle(); if (typeof p.position === "number") P.seek(p.position / 1000); break;
-        case "seek": P.seek(p.position / 1000); break;
+        case "change_track":
+          if (p.trackInfo?.id) {
+            const id = loadTrack(p.trackInfo);
+            setClock(id, 0, false); // parada no começo até o anfitrião mandar tocar
+            whenLoaded(id);
+            follow();
+          }
+          break;
+        case "play": if (cur) { setClock(cur, p.position / 1000 + lagSec(), true); follow(); } break;
+        case "pause": if (cur) { setClock(cur, typeof p.position === "number" ? p.position / 1000 : P.position, false); follow(); } break;
+        case "seek": if (cur) { setClock(cur, p.position / 1000 + (clock?.playing ? lagSec() : 0), clock?.id === cur ? clock.playing : P.playing); follow(); } break;
         case "queue_add": if (p.trackInfo) { const t = registerTrack(fromTrackInfo(p.trackInfo)); p.insertNext ? P.playNext([t.id]) : P.addToQueue([t.id]); } break;
         case "queue_remove": { const i = P.queue.findIndex((id, k) => k > P.index && id === `youtube:${p.trackId}`); if (i >= 0) P.remove(i); break; }
         case "queue_clear": P.clearUpcoming(); break;
@@ -231,7 +291,8 @@ function broadcast(force = false) {
     lastSent = { ...lastSent, id, playing: false, pos: 0, at: Date.now() };
     client?.send("playback_action", { action: "change_track", trackId: ti.id, trackInfo: ti, position: 0, serverTime: Date.now() });
     clearTimeout(pendingStart);
-    pendingStart = setTimeout(startAfterBuffer, 8000);
+    pendingStart = setTimeout(startAfterBuffer, 8000); // se ninguém responder, toca mesmo assim
+    whenLoaded(id); // o servidor responde com buffer_complete e aí o anfitrião manda tocar
     scheduleQueue(true);
   }
 }
