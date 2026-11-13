@@ -90,3 +90,27 @@ test("faixa carregada em pausa (Ouvir junto) fica pausada, sem 'carregando', e r
     assert.equal(tauri.named("audio_play").length, 1, "retomar não recarrega");
   } finally { await sleep(30); await app.close(); }
 });
+
+test("trocou o dispositivo de saída com outra taxa: a faixa recarrega de onde estava, e continua pausada se estava pausada", async () => {
+  const { usePlayer, fake, tauri, app } = await boot(saved);
+  try {
+    const P = usePlayer;
+    P.getState().play(["youtube:aaa"], 0, "x");
+    await until("tocando", () => P.getState().playing && fake.playing && !P.getState().buffering);
+    // mesma taxa: nada a fazer, o som segue no novo dispositivo
+    tauri.emit("audio:device", { name: "Fones", rateChanged: false, position: 42 });
+    await sleep(60);
+    assert.equal(tauri.named("audio_play").length, 1);
+    // taxa diferente: recarrega na posição informada pelo motor
+    tauri.emit("audio:device", { name: "HDMI", rateChanged: true, position: 42 });
+    await until("recarregou", () => tauri.named("audio_play").length === 2 && fake.ready);
+    assert.equal(fake.start, 42);
+    assert.equal(fake.playing, true);
+    // pausado: recarrega, mas sem tocar
+    P.getState().toggle(); await until("pausou", () => !fake.playing);
+    tauri.emit("audio:device", { name: "Fones", rateChanged: true, position: 50 });
+    await until("recarregou pausada", () => tauri.named("audio_play").length === 3 && fake.ready);
+    assert.equal(fake.playing, false); assert.equal(P.getState().playing, false);
+    await until("sem carregando", () => !P.getState().buffering);
+  } finally { await sleep(30); await app.close(); }
+});

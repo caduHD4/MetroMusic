@@ -4,6 +4,14 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.5
+
+Audio now follows the system output device.
+
+### Audio
+- **Switching the Windows output device now works while the app is open.** MetroMusic follows the system default (headphones, speakers, HDMI, Bluetooth…) and the sound moves with it. Before, it stayed on the device that was selected when the app started. When the new device uses a different sample rate, the current track reloads from the same spot, and stays paused if it was paused.
+- On Linux nothing changes: PipeWire/PulseAudio already move the sound (checked by switching the default sink while the audio engine was playing).
+
 ## 0.1.4
 
 Fixes for playback when the app opens and for Listen together.

@@ -58,6 +58,8 @@ let errorStreak = 0;
  * está vazio: "retomar" nesse estado não toca nada. O mesmo vale depois que a faixa termina (o motor fica no fim).
  */
 let loadedId: string | null = null;
+/** Recarrega a faixa atual numa posição (ligado dentro do store). Usado quando o dispositivo de saída muda de taxa. */
+let restart: (at: number, paused: boolean) => void = () => {};
 
 export const usePlayer = create<Player>()(
   persist(
@@ -67,6 +69,7 @@ export const usePlayer = create<Player>()(
       let sleepFade = 1; // 1 = volume normal; cai a 0 no último minuto do timer de sono
       const syncVolume = () => { const s = get(); engine.setVolume(s.muted ? 0 : s.volume * sleepFade); };
       /** Troca de faixa: registra no histórico e começa a tocar (no backend ou no simulador). */
+      restart = (at, paused) => started({}, at, paused);
       const started = (extra: Partial<Player> = {}, start = 0, paused = false) => {
         set({ position: start, playing: !paused, buffering: true, error: null, info: null, ...extra });
         clearTimeout(bufferTimer);
@@ -349,6 +352,7 @@ export async function initBackend() {
   if (!backend) return;
   const P = usePlayer;
   const current = () => { const s = P.getState(); return getTrack(s.queue[s.index]); };
+  const real = (id?: string) => { const t = id ? getTrack(id) : undefined; return t?.ext ? t : undefined; };
   // Eventos de uma reprodução anterior (token menor) ou de uma faixa de demonstração são ignorados.
   const fresh = (p: { token: number }) => {
     if (!current()?.ext) return false;
@@ -388,6 +392,13 @@ export async function initBackend() {
     loadedId = s.queue[idx];
     P.setState({ index: idx, position: 0, playing: true, buffering: false, error: null, engineToken: Math.max(s.engineToken, p.token), info: { key: p.key, source: p.source, codec: p.codec, bitrate: p.bitrate } });
     if (p.duration) fixDuration(p.duration);
+  });
+  // O dispositivo de saída padrão do sistema mudou (fones, caixas, HDMI…) e o motor já passou a tocar nele. Se a taxa de
+  // amostragem é outra, o que estava decodificado ficou na taxa antiga: recarrega a faixa de onde estava.
+  await onEvent<any>("audio:device", (p) => {
+    const s = P.getState(); const id = s.queue[s.index];
+    if (!p.rateChanged || !real(id) || loadedId !== id) return;
+    restart(typeof p.position === "number" ? p.position : s.position, !s.playing);
   });
   // a faixa atual carregou: agora dá para entregar a próxima ao motor
   await onEvent<any>("audio:loaded", () => syncNext());

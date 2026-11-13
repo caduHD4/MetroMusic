@@ -4,6 +4,14 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.5
+
+O áudio agora acompanha o dispositivo de saída do sistema.
+
+### Áudio
+- **Trocar o dispositivo de saída no Windows agora funciona com o app aberto.** O MetroMusic segue o padrão do sistema (fones, caixas, HDMI, Bluetooth…) e o som vai junto. Antes, ele ficava no dispositivo que estava selecionado quando o app abriu. Se o novo dispositivo usa outra taxa de amostragem, a faixa atual recarrega do mesmo ponto e continua pausada se estava pausada.
+- No Linux nada muda: o PipeWire/PulseAudio já movem o som (conferido trocando o dispositivo padrão com o motor de áudio tocando).
+
 ## 0.1.4
 
 Correções na reprodução ao abrir o app e no Ouvir junto.

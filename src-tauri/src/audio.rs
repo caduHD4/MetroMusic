@@ -30,6 +30,8 @@ pub type Emit = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
 /// ~1,5 s de áudio estéreo à frente do dispositivo.
 const BUFFER_SECONDS: f64 = 1.5;
 const POSITION_EVERY: Duration = Duration::from_millis(250);
+/// De quanto em quanto tempo confere se o dispositivo de saída padrão do sistema mudou.
+const DEVICE_CHECK_EVERY: Duration = Duration::from_millis(1500);
 
 /// Sem busca nativa de propósito: com `is_seekable() == true` o demuxer MP4 exige o tamanho total e varre
 /// o arquivo inteiro antes de começar, o que obrigaria a esperar o download completo (e no HLS o tamanho
@@ -510,9 +512,15 @@ fn soft_clip(x: f32) -> f32 {
     if a <= KNEE { x } else { x.signum() * (KNEE + (1.0 - KNEE) * ((a - KNEE) / (1.0 - KNEE)).tanh()) }
 }
 
-fn open_device(sh: Arc<Shared>) -> Result<(cpal::Stream, u32), String> {
+/// Nome do dispositivo de saída padrão do sistema agora (`None` se não houver nenhum).
+fn default_device_name() -> Option<String> {
+    cpal::default_host().default_output_device().map(|d| d.name().unwrap_or_default())
+}
+
+fn open_device(sh: Arc<Shared>) -> Result<(cpal::Stream, u32, String), String> {
     let host = cpal::default_host();
     let device = host.default_output_device().ok_or("nenhum dispositivo de saída de áudio encontrado")?;
+    let name = device.name().unwrap_or_default();
     let supported = device.default_output_config().map_err(|e| format!("configuração de áudio: {e}"))?;
     let rate = supported.sample_rate().0;
     let config: cpal::StreamConfig = supported.config();
@@ -524,7 +532,7 @@ fn open_device(sh: Arc<Shared>) -> Result<(cpal::Stream, u32), String> {
         other => return Err(format!("formato de amostra não suportado: {other:?}")),
     };
     stream.play().map_err(|e| format!("não foi possível iniciar a saída: {e}"))?;
-    Ok((stream, rate))
+    Ok((stream, rate, name))
 }
 
 // ───────── Thread do motor
@@ -533,11 +541,12 @@ struct Active { cancel: Arc<AtomicBool>, dec_tx: Sender<DecCmd>, meta: LoadMeta,
 struct Pending { cancel: Arc<AtomicBool>, dec_tx: Sender<DecCmd>, meta: LoadMeta, duration: Option<f64>, slot: usize, gapless_pair: bool }
 
 fn engine_thread(sh: Arc<Shared>, rx: Receiver<Cmd>, emit: Emit, ready: std::sync::mpsc::SyncSender<Result<(), String>>) {
-    let (_stream, rate) = match open_device(sh.clone()) {
+    let (mut _stream, mut rate, mut device_name) = match open_device(sh.clone()) {
         Ok(v) => { let _ = ready.send(Ok(())); v }
         Err(e) => { let _ = ready.send(Err(e)); return; }
     };
     RATE.store(rate, Ordering::Relaxed);
+    let mut last_device_check = Instant::now();
     let mut active: Option<Active> = None;
     let mut pending: Option<Pending> = None;
     let mut last_emit = Instant::now();
@@ -548,6 +557,7 @@ fn engine_thread(sh: Arc<Shared>, rx: Receiver<Cmd>, emit: Emit, ready: std::syn
     let spawn_decoder = |open: Opener, ext: String, start: f64, slot: usize, is_next: bool, measure: bool, cancel: Arc<AtomicBool>, token: u64, hint: Option<f64>, loaded: Sender<(u64, Option<f64>)>| -> Sender<DecCmd> {
         let (dec_tx, dec_rx) = channel();
         let (shc, c2, em) = (sh.clone(), cancel, emit.clone());
+        let rate = RATE.load(Ordering::Relaxed); // a do dispositivo de agora (muda quando o padrão do sistema muda)
         std::thread::Builder::new().name("audio-decoder".into()).spawn(move || {
             if let Err(e) = decode_loop(open, ext, start, shc, rate, slot, is_next, measure, c2.clone(), dec_rx, loaded, token, hint) {
                 if !c2.load(Ordering::Relaxed) { em("audio:state", json!({ "token": token, "state": "error", "message": e })); }
@@ -557,6 +567,29 @@ fn engine_thread(sh: Arc<Shared>, rx: Receiver<Cmd>, emit: Emit, ready: std::syn
     };
 
     loop {
+        // Segue o dispositivo de saída padrão do sistema: ao trocar de fones/alto-falantes no Windows, o som vai junto.
+        if last_device_check.elapsed() >= DEVICE_CHECK_EVERY {
+            last_device_check = Instant::now();
+            if let Some(now) = default_device_name().filter(|n| *n != device_name) {
+                match open_device(sh.clone()) {
+                    Ok((stream, new_rate, name)) => {
+                        let pos = position_of(&sh, sh.played_frames.load(Ordering::Relaxed));
+                        let rate_changed = new_rate != rate;
+                        if rate_changed {
+                            // a contagem de quadros passa a valer na taxa nova; a interface recarrega a faixa nesta posição
+                            sh.base_pos.store(pos.to_bits(), Ordering::Relaxed);
+                            sh.played_frames.store(0, Ordering::Relaxed);
+                            RATE.store(new_rate, Ordering::Relaxed);
+                            rate = new_rate;
+                        }
+                        _stream = stream; // o fluxo antigo é descartado aqui
+                        device_name = name;
+                        emit("audio:device", json!({ "name": device_name, "rateChanged": rate_changed, "position": pos }));
+                    }
+                    Err(e) => eprintln!("[áudio] não consegui abrir {now}: {e}"), // tenta de novo na próxima checagem
+                }
+            }
+        }
         match rx.recv_timeout(Duration::from_millis(60)) {
             Ok(Cmd::Load { open, ext, start, autoplay, cancel, meta }) => {
                 if let Some(a) = active.take() { a.cancel.store(true, Ordering::Relaxed); }

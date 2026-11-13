@@ -1,6 +1,6 @@
 [package]
 name = "metromusic"
-version = "0.1.4"
+version = "0.1.5"
 description = "Player de música desktop, offline e online"
 edition = "2021"
 
