@@ -564,6 +564,8 @@ mod tests {
     #[test]
     fn legenda_do_youtube() {
         let xml = "<?xml version=\"1.0\"?><timedtext format=\"3\"><body><p t=\"1360\" d=\"1680\">[\u{266a}\u{266a}\u{266a}]</p><p t=\"18640\" d=\"3240\">\u{266a} We&#39;re no strangers to love</p><p t=\"22000\" d=\"900\"><s>You</s><s t=\"300\"> know</s></p><p t=\"24000\">\n</p></body></timedtext>";
+        let tagged = "<transcript><text start=\"5\" dur=\"2\">&amp;lt;font color=&amp;quot;#A0AAB4&amp;quot;&amp;gt;&amp;lt;/font&amp;gt;&amp;lt;font color=&amp;quot;485883&amp;quot;&amp;gt;&amp;lt;b&amp;gt;Yu&amp;lt;/b&amp;gt;&amp;lt;/font&amp;gt; kata</text></transcript>";
+        assert_eq!(crate::providers::ytmusic::parse_timedtext(tagged), vec![(5000, "Yu kata".to_string())]);
         let std_fmt = "<transcript><text start=\"1.36\" dur=\"1\">[\u{266a}]</text><text start=\"18.64\" dur=\"3\">\u{266a} We&amp;#39;re here \u{266a}</text></transcript>";
         assert_eq!(crate::providers::ytmusic::parse_timedtext(std_fmt), vec![(18640, "We're here".to_string())]);
         assert_eq!(crate::providers::ytmusic::parse_timedtext(xml), vec![(18640, "We're no strangers to love".to_string()), (22000, "You know".to_string())]);

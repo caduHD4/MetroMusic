@@ -883,3 +883,15 @@ async fn net_letra_melhor() {
         }
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn net_ytsub_igaku() {
+    let t = TrackInfo { provider: "x".into(), id: "x".into(), title: "Medicine".into(), artists: vec!["IGAKU".into()], ..Default::default() };
+    let l = crate::lyrics::get(&t, &["ytsub".to_string()], true).await.unwrap();
+    match l {
+        Some(l) => { let sujas = l.lines.iter().filter(|x| x.text.contains('<') || x.text.contains("font") || x.words.iter().any(|w| w.w.contains('<'))).count();
+            println!("IGAKU {} | {} linhas | com marcação: {sujas} | 1ª: {:?}", l.provider, l.lines.len(), l.lines.first().map(|x| &x.text)); assert_eq!(sujas, 0); }
+        None => println!("IGAKU: sem legenda"),
+    }
+}

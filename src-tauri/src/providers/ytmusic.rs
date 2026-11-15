@@ -778,7 +778,7 @@ pub(crate) fn parse_timedtext(xml: &str) -> Vec<(u64, String)> {
             None => n.attribute("t")?.parse().ok()?,
         };
         let raw: String = n.descendants().filter(|d| d.is_text()).filter_map(|d| d.text()).collect();
-        let text = unescape_twice(&raw.split_whitespace().collect::<Vec<_>>().join(" ")).trim_matches(|c: char| c == '♪' || c.is_whitespace()).to_string();
+        let text = crate::lyrics::strip_markup(&unescape_twice(&raw.split_whitespace().collect::<Vec<_>>().join(" "))).trim_matches(|c: char| c == '♪' || c.is_whitespace()).to_string();
         // trechos só de ruído, como [Música] ou [♪♪♪]
         let noise = text.starts_with('[') && text.ends_with(']');
         (!text.is_empty() && !noise).then_some((ms, text))

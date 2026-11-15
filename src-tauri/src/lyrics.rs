@@ -316,6 +316,25 @@ pub fn configured_order() -> Vec<String> {
     order.into_iter().filter(|p| SUPPORTED.contains(&p.as_str()) && !off.contains(p)).collect()
 }
 
+static TAG: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)</?\s*[a-z][a-z0-9]*(?:\s[^<>]*)?/?>").unwrap());
+
+/// Tira marcação HTML (`<font color=…>`, `<b>`, `<i>`) que algumas fontes, como as legendas do YouTube, deixam no texto.
+pub(crate) fn strip_markup(s: &str) -> String {
+    if !s.contains('<') { return s.to_string(); }
+    TAG.replace_all(s, "").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Aplica `strip_markup` a toda a letra e descarta o que ficar vazio.
+fn sanitize(mut l: Lyrics) -> Lyrics {
+    for line in &mut l.lines {
+        line.text = strip_markup(&line.text);
+        for w in &mut line.words { w.w = strip_markup(&w.w); }
+        line.words.retain(|w| !w.w.is_empty());
+    }
+    l.lines.retain(|x| !x.text.is_empty());
+    l
+}
+
 /// Tempo máximo de cada provedor (o MetroFuse usa 8 s) e de toda a busca em sequência.
 const PER_PROVIDER: Duration = Duration::from_secs(8);
 const TOTAL: Duration = Duration::from_secs(25);
@@ -329,7 +348,7 @@ async fn from_provider(p: &str, track: &TrackInfo) -> Option<Lyrics> {
             "qq" => m::qq(track).await, "youtube" => m::youtube(track).await, "ytsub" => m::ytsub(track).await, "deezer" => m::deezer(track).await, _ => None,
         }
     };
-    tokio::time::timeout(PER_PROVIDER, run).await.ok().flatten()
+    tokio::time::timeout(PER_PROVIDER, run).await.ok().flatten().map(sanitize).filter(|l| !l.lines.is_empty())
 }
 
 /// Depois da primeira letra sincronizada válida, quanto esperar pelos provedores que ainda não responderam
@@ -473,6 +492,17 @@ mod tests {
         let longa = lrc(30, 10.0); // termina em 290 s numa faixa de 200 s
         assert!(score(&longa, 0, 6, 200.0) < score(&plain, 5, 6, 200.0));
         assert!(!trusted(&longa, 200.0) && trusted(&line, 200.0));
+    }
+
+    #[test]
+    fn tira_marcacao_html() {
+        assert_eq!(strip_markup(r##"<font color="#A0AAB4"></font><font color="485883"><b>Yu</b></font> kata <i>ne</i>"##), "Yu kata ne");
+        assert_eq!(strip_markup("2 < 3 e 5 > 4"), "2 < 3 e 5 > 4");
+        assert_eq!(strip_markup("sem tags"), "sem tags");
+        let l = Lyrics { synced: true, provider: "x".into(), lines: parse_lrc("[00:01.00]<b>oi</b> mundo\n[00:03.00]<font color=\"#fff\"></font>") };
+        let s = sanitize(l);
+        assert_eq!(s.lines.len(), 1);
+        assert_eq!(s.lines[0].text, "oi mundo");
     }
 
     #[test]
