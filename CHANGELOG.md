@@ -4,6 +4,15 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.9
+
+You can now choose the language of YouTube subtitles.
+
+### Lyrics
+- **New "Subtitle language…" in the lyrics menu.** It lists the caption tracks the video has (for example English, Japanese, Portuguese, Spanish), marks the recommended one, tells apart the ones written by a person from the auto-generated ones, and shows which is in use. Your choice is saved for that song, and the lyrics credit now says the language ("YouTube Subtitles · Portuguese").
+- **New setting: Settings › Lyrics providers › "YouTube subtitle language".** It picks the language the automatic choice uses when the video has a human-written track in it; otherwise the song's original language is used.
+- "Search again" clears your choice and goes back to the automatic one.
+
 ## 0.1.8
 
 More fixes for lyrics from YouTube subtitles.

@@ -4,6 +4,15 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.9
+
+Agora você escolhe o idioma das legendas do YouTube.
+
+### Letras
+- **Novo "Idioma da legenda…" no menu da letra.** Ele lista as faixas de legenda que o vídeo tem (por exemplo inglês, japonês, português, espanhol), marca a recomendada, separa as escritas por uma pessoa das automáticas e mostra qual está em uso. A sua escolha fica salva para aquela música, e o crédito da letra agora diz o idioma ("YouTube Legenda · Portuguese").
+- **Nova opção: Configurações › Provedores de letra › "Idioma da legenda do YouTube".** Define o idioma que a escolha automática usa quando o vídeo tem uma faixa escrita por uma pessoa nele; senão vale o idioma original da música.
+- "Buscar de novo" apaga a sua escolha e volta à automática.
+
 ## 0.1.8
 
 Mais correções nas letras vindas das legendas do YouTube.
