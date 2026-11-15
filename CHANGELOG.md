@@ -4,6 +4,24 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.6
+
+Lyrics that pick the best source on their own, and the lyrics tools now really work.
+
+### Lyrics
+- **The app now chooses the best lyrics by itself.** It asks every enabled provider at once and keeps the best result: word-by-word beats line-by-line, which beats unsynced. The order in Settings only breaks ties. Lyrics whose timing runs past the end of the track (another version of the song) lose points. Each provider gets 8 seconds.
+- **New providers**, ported from MetroFuse: Apple Music (Paxsenix), Musixmatch, LyricsPlus, Binimum, QQ Music, YouTube Music and Deezer (needs the account). They join Better Lyrics, LrcLib, KuGou and Spotify.
+- **YouTube subtitles** now work as a lyrics source, line by line, using the video's own captions.
+- Musixmatch is only accepted when the title and artist it matched are the ones you asked for (it used to be able to return the lyrics of another song).
+- **"Search again"** really asks every provider again. **"Search another lyric…"** lists what each provider found, with its sync type, so you can pick one. **"Edit lyrics"** saves (LRC with timestamps, or plain text). **"Share as image"** creates a real PNG to copy or save. The sync adjustment and the lyrics you pick or edit are remembered per track.
+- Downloads that embed the lyrics now follow your provider order (it was fixed to Better Lyrics + LrcLib).
+- New setting: *Musixmatch: line-by-line only*.
+- Not found on some sources right now: Apple Music depends on a third-party token service that was down when this was tested, and Spotify and Deezer lyrics need the account connected.
+
+### Audio sources
+- **Deezer now plays through your account** (the `arl` cookie): full tracks, FLAC with a premium account.
+- TIDAL and JioSaavn were removed.
+
 ## 0.1.5
 
 Audio now follows the system output device.

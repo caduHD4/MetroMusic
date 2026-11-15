@@ -4,6 +4,24 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.6
+
+Letras que escolhem a melhor fonte sozinhas, e as ferramentas de letra agora funcionam de verdade.
+
+### Letras
+- **O app agora escolhe a melhor letra sozinho.** Ele pergunta a todos os provedores ligados ao mesmo tempo e fica com o melhor resultado: palavra a palavra vence linha a linha, que vence sem sincronia. A ordem das configurações só desempata. Letra cujo tempo passa do fim da faixa (outra versão da música) perde pontos. Cada provedor tem 8 segundos.
+- **Provedores novos**, portados do MetroFuse: Apple Music (Paxsenix), Musixmatch, LyricsPlus, Binimum, QQ Music, YouTube Music e Deezer (precisa da conta). Eles se somam a Better Lyrics, LrcLib, KuGou e Spotify.
+- **Legendas do YouTube** agora funcionam como fonte de letra, linha a linha, usando as legendas do próprio vídeo.
+- O Musixmatch só é aceito quando o título e o artista que ele casou são os que você pediu (antes podia devolver a letra de outra música).
+- **"Buscar de novo"** pergunta de verdade a todos os provedores outra vez. **"Buscar outra letra…"** lista o que cada provedor achou, com o tipo de sincronia, para você escolher. **"Editar letra"** salva (LRC com tempos, ou texto simples). **"Compartilhar como imagem"** cria um PNG de verdade, para copiar ou salvar. O ajuste de sincronia e as letras que você escolhe ou edita ficam guardados por faixa.
+- Os downloads com a letra embutida agora seguem a sua ordem de provedores (era fixa em Better Lyrics + LrcLib).
+- Nova opção: *Musixmatch: só linha a linha*.
+- Sem resultado em algumas fontes no momento: o Apple Music depende de um serviço de token de terceiros que estava fora do ar nos testes, e as letras do Spotify e do Deezer pedem a conta conectada.
+
+### Fontes de áudio
+- **O Deezer agora toca pela sua conta** (cookie `arl`): faixas inteiras, em FLAC com conta premium.
+- TIDAL e JioSaavn foram removidos.
+
 ## 0.1.5
 
 O áudio agora acompanha o dispositivo de saída do sistema.
