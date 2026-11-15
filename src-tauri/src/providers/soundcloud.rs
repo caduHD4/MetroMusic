@@ -253,6 +253,7 @@ pub async fn resolve(track: &TrackInfo) -> Res<StreamInfo> {
         source_id: track.id.clone(),
         segments,
         loudness_lufs: None,
+        cipher: None,
     };
     STREAMS.lock().insert(track.id.clone(), info.clone());
     Ok(info)

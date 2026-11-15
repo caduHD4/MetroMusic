@@ -70,6 +70,9 @@ pub struct StreamInfo {
     /// Loudness medido pelo serviço (LUFS), se informado; senão o motor mede enquanto decodifica.
     #[serde(default)]
     pub loudness_lufs: Option<f64>,
+    /// Faixa do Deezer cifrada (BF_CBC_STRIPE): id usado para derivar a chave. O cache decifra ao gravar.
+    #[serde(default)]
+    pub cipher: Option<String>,
 }
 
 pub fn now_ms() -> u64 {

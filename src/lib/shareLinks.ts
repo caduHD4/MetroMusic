@@ -2,7 +2,7 @@
 // Funções puras (testadas em scripts/tests/shareLinks.test.mjs); quem resolve o id real é o diálogo.
 
 export type ShareKind = "track" | "album" | "artist" | "playlist";
-export interface ShareRef { kind: ShareKind; id: string; provider?: string; /** endereço público já conhecido (SoundCloud, JioSaavn) */ url?: string | null }
+export interface ShareRef { kind: ShareKind; id: string; provider?: string; /** endereço público já conhecido (SoundCloud) */ url?: string | null }
 
 const https = (u?: string | null) => (u && /^https:\/\//i.test(u) ? u : null);
 
@@ -11,7 +11,7 @@ export function publicUrl(r: ShareRef): string | null {
   if (r.kind === "track") {
     if (r.provider === "youtube" && /^[\w-]{11}$/.test(r.id)) return `https://music.youtube.com/watch?v=${r.id}`;
     if (r.provider === "spotify" && /^[A-Za-z0-9]{10,30}$/.test(r.id)) return `https://open.spotify.com/track/${r.id}`;
-    if (r.provider === "soundcloud" || r.provider === "jiosaavn") return https(r.url);
+    if (r.provider === "soundcloud") return https(r.url);
     return null;
   }
   // coleções: o id diz de onde vêm

@@ -45,9 +45,9 @@ const BY_KEY: Record<string, LucideIcon> = {
   discordAdvanced: Settings, discordName: Tag, discordBtn1: MousePointerClick, discordBtn2: MousePointerClick, discordCanvas: Film, discordCanvasQuality: Gauge,
   lastfmScrobble: Radio, lastfmNowPlaying: Play, lastfmLikes: Heart, scrobbleMinDuration: Timer, scrobblePercent: Percent, scrobbleMinutes: Clock,
   spotifyCanvas: Film, canvasPriority: ListOrdered, canvasDownload: Download, spotifyHistory: History, spotifyHistoryGlobal: Globe, spotifyLikes: Heart, spotifyLyrics: MicVocal,
-  tidalQuality: AudioLines, tidalArtwork: Image, tidalAnimated: Film, tidalEndpoints: Server, qobuzCountry: MapPin, qobuzInstances: Server,
-  deezerQuality: AudioLines, deezerUseAccount: CircleUser, deezerFast: Zap, deezerLyrics: MicVocal, deezerResolver: Link, deezerProxy: Network, deezerProxyUrl: Link,
-  soundcloudQuality: AudioLines, jioQuality: AudioLines, jioLanguage: Languages,
+  qobuzCountry: MapPin, qobuzInstances: Server,
+  deezerQuality: AudioLines, deezerLyrics: MicVocal,
+  soundcloudQuality: AudioLines,
   ltServer: Server, ltCustomServer: Link, ltUsername: CircleUser, ltAutoJoin: Check, ltAutoSuggest: ListPlus, ltSyncVolume: Volume2,
   // privacidade, armazenamento e dados
   pauseHistory: Pause, clearHistory: Trash2, pauseSearchHistory: Search, clearSearchHistory: Trash2, useLoginForBrowse: LogIn, ytSync: RefreshCw,

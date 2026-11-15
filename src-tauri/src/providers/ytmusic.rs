@@ -5,6 +5,7 @@
 
 use super::auth;
 use super::youtube::{at, big_artwork, context, parse_duration, parse_item, post, visitor_data, WEB_REMIX};
+use crate::http::err;
 use crate::model::{Res, TrackInfo};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -735,4 +736,51 @@ mod gerenciar_tests {
         let t = page_track(&row, None, &["Fulano".into()], &None).unwrap();
         assert_eq!((t.id.as_str(), t.set_id.as_deref()), ("V1", Some("SET1")));
     }
+}
+
+/// Letra do YouTube Music (texto simples, quase nunca sincronizada). Porte de `YouTubeLyricsProvider` (MetroFuse):
+/// o `next` da faixa aponta, na 2ª aba, para o `browseId` da letra; o `browse` devolve o bloco de descrição.
+pub async fn lyrics_text(video_id: &str) -> Res<Option<String>> {
+    let visitor = visitor_data().await;
+    let next = post("next", &WEB_REMIX, &visitor, json!({ "context": context(&WEB_REMIX, &visitor), "videoId": video_id }), false).await?;
+    let ep = at(&next, "contents.singleColumnMusicWatchNextResultsRenderer.tabbedRenderer.watchNextTabbedResultsRenderer.tabs.1.tabRenderer.endpoint.browseEndpoint");
+    let Some(browse_id) = ep.and_then(|e| e.get("browseId")).and_then(|b| b.as_str()) else { return Ok(None) };
+    let mut body = json!({ "context": context(&WEB_REMIX, &visitor), "browseId": browse_id });
+    if let Some(p) = ep.and_then(|e| e.get("params")).and_then(|p| p.as_str()) { body["params"] = json!(p); }
+    let v = post("browse", &WEB_REMIX, &visitor, body, false).await?;
+    let shelf = at(&v, "contents.sectionListRenderer.contents").and_then(|c| c.as_array()).and_then(|c| c.iter().find_map(|x| x.get("musicDescriptionShelfRenderer")));
+    let text: String = shelf.and_then(|s| at(s, "description.runs")).and_then(|r| r.as_array()).map(|r| r.iter().filter_map(|x| x.get("text").and_then(|t| t.as_str())).collect()).unwrap_or_default();
+    Ok(Some(text).filter(|t| !t.trim().is_empty()))
+}
+
+/// Legenda do vídeo: `(início em ms, texto)` por trecho. Pega a faixa escrita à mão (senão a automática) e lê o
+/// `timedtext` que o YouTube serve para o mesmo cliente que gerou a URL.
+pub async fn transcript(video_id: &str) -> Res<Vec<(u64, String)>> {
+    let mut tracks = super::youtube::caption_tracks(video_id).await?;
+    tracks.sort_by_key(|t| t.1); // manual antes de automática (a ordenação é estável: mantém o idioma original primeiro)
+    let (_, _, url, ua) = tracks.into_iter().next().ok_or("sem legendas")?;
+    let xml = crate::http::CLIENT.get(url.replace("&fmt=srv3", "")).header("User-Agent", ua).timeout(std::time::Duration::from_secs(10)).send().await.map_err(err)?.text().await.map_err(err)?;
+    let cues = parse_timedtext(&xml);
+    if cues.is_empty() { Err("a legenda veio vazia".into()) } else { Ok(cues) }
+}
+
+/// Entidades que sobram depois do XML: o YouTube escapa o texto duas vezes (`&amp;#39;`).
+fn unescape_twice(s: &str) -> String {
+    s.replace("&#39;", "'").replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+}
+
+/// Lê o `timedtext`: `<text start="s" dur="s">` (formato padrão) ou `<p t="ms" d="ms">` (formato 3, com `<s>` por palavra).
+pub(crate) fn parse_timedtext(xml: &str) -> Vec<(u64, String)> {
+    let Ok(doc) = roxmltree::Document::parse(xml) else { return vec![] };
+    doc.descendants().filter(|n| n.has_tag_name("text") || n.has_tag_name("p")).filter_map(|n| {
+        let ms: u64 = match n.attribute("start") {
+            Some(s) => (s.parse::<f64>().ok()? * 1000.0).round() as u64,
+            None => n.attribute("t")?.parse().ok()?,
+        };
+        let raw: String = n.descendants().filter(|d| d.is_text()).filter_map(|d| d.text()).collect();
+        let text = unescape_twice(&raw.split_whitespace().collect::<Vec<_>>().join(" ")).trim_matches(|c: char| c == '♪' || c.is_whitespace()).to_string();
+        // trechos só de ruído, como [Música] ou [♪♪♪]
+        let noise = text.starts_with('[') && text.ends_with(']');
+        (!text.is_empty() && !noise).then_some((ms, text))
+    }).collect()
 }

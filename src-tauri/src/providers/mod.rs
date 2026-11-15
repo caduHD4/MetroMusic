@@ -4,7 +4,6 @@ pub mod health;
 pub mod prefs;
 pub mod auth;
 pub mod deezer;
-pub mod jiosaavn;
 pub mod matcher;
 pub mod sc_account;
 pub mod spotify;
@@ -33,7 +32,6 @@ pub async fn search(provider: &str, query: &str, limit: usize) -> Res<Vec<TrackI
         "soundcloud" => soundcloud::search(query, limit).await,
         "deezer" => deezer::search(query, limit).await,
         "spotify" => spotify::search(query, limit).await,
-        "jiosaavn" => jiosaavn::search(query, limit).await,
         other => Err(format!("provedor sem busca online: {other}")),
     }
 }
@@ -56,14 +54,17 @@ pub struct Candidate {
     pub ms: u64,
 }
 
-const PLAYS_WHOLE: [&str; 2] = ["youtube", "soundcloud"];
+/// Provedores que entregam a faixa inteira. O Deezer só entra com a conta conectada.
+fn plays_whole(provider: &str) -> bool {
+    matches!(provider, "youtube" | "soundcloud") || (provider == "deezer" && deezer::is_logged_in())
+}
 
 /// Procura a mesma música em cada provedor de `order` (em paralelo) e devolve só os resultados válidos,
 /// agrupados na ordem dos provedores e, dentro de cada um, do mais para o menos confiável.
 pub async fn candidates(wanted: &TrackInfo, order: &[String]) -> Vec<Candidate> {
     let term = format!("{} {}", wanted.title, wanted.artists.join(" ")).trim().to_string();
-    let mut providers: Vec<String> = order.iter().filter(|p| PLAYS_WHOLE.contains(&p.as_str())).cloned().collect();
-    if PLAYS_WHOLE.contains(&wanted.provider.as_str()) && !providers.contains(&wanted.provider) { providers.push(wanted.provider.clone()); }
+    let mut providers: Vec<String> = order.iter().filter(|p| plays_whole(p)).cloned().collect();
+    if plays_whole(&wanted.provider) && !providers.contains(&wanted.provider) { providers.push(wanted.provider.clone()); }
     let batches = join_all(providers.iter().map(|p| async {
         let t0 = std::time::Instant::now();
         let found = search_playable(p, &term).await;
@@ -79,38 +80,43 @@ pub async fn candidates(wanted: &TrackInfo, order: &[String]) -> Vec<Candidate> 
     out
 }
 
-static MATCHES: Lazy<Mutex<HashMap<String, (u64, Option<TrackInfo>)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static MATCHES: Lazy<Mutex<HashMap<String, (u64, Vec<TrackInfo>)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// Procura a mesma música em `order` (provedores que tocam por inteiro) e devolve a melhor correspondência.
-/// Busca em paralelo, com limite de tempo, e escolhe pela confiança do matcher e, no empate, pela ordem.
-pub async fn find_match(wanted: &TrackInfo, order: &[String]) -> Option<TrackInfo> {
-    let cache_key = format!("{}|{}", wanted.key(), order.join(","));
+/// A mesma música nos provedores de `order` que tocam por inteiro (a própria faixa fica de fora), do resultado
+/// mais parecido ao menos parecido; no empate vale a ordem dos provedores. Busca em paralelo, com limite de tempo.
+pub async fn matches_for(wanted: &TrackInfo, order: &[String]) -> Vec<TrackInfo> {
+    let cache_key = format!("{}|{}|{}", wanted.key(), order.join(","), deezer::is_logged_in());
     if let Some((at, found)) = MATCHES.lock().get(&cache_key) {
         if now_ms() - at < MATCH_CACHE_TTL_MS { return found.clone(); }
     }
     let term = format!("{} {}", wanted.title, wanted.artists.join(" ")).trim().to_string();
-    let batches = join_all(order.iter().map(|p| search_playable(p, &term))).await;
-    let mut best: Option<(TrackInfo, i32, usize)> = None;
-    for (rank, candidates) in batches.iter().enumerate() {
-        if let Some((t, score)) = matcher::best(wanted, candidates) {
-            let better = best.as_ref().map_or(true, |(_, s, r)| score > *s || (score == *s && rank < *r));
-            if better { best = Some((t, score, rank)); }
+    let providers: Vec<&String> = order.iter().filter(|p| plays_whole(p)).collect();
+    let batches = join_all(providers.iter().map(|p| search_playable(p, &term))).await;
+    let mut all: Vec<(TrackInfo, i32, usize)> = vec![];
+    for (rank, found) in batches.iter().enumerate() {
+        for (t, score) in matcher::ranked(wanted, found) {
+            if t.key() != wanted.key() { all.push((t, score, rank)); }
         }
     }
-    let found = best.map(|(t, _, _)| t);
+    all.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
+    let found: Vec<TrackInfo> = all.into_iter().map(|(t, _, _)| t).collect();
     MATCHES.lock().insert(cache_key, (now_ms(), found.clone()));
     found
 }
 
+/// A melhor correspondência de `matches_for`.
+pub async fn find_match(wanted: &TrackInfo, order: &[String]) -> Option<TrackInfo> { matches_for(wanted, order).await.into_iter().next() }
+
 /// Descobre o stream de áudio de uma faixa.
 ///
-/// - YouTube e SoundCloud tocam direto do próprio serviço.
-/// - Deezer só tem o trecho de 30 s na API pública; a faixa inteira vem da correspondência em
-///   `order`. Se nada corresponder, toca o trecho.
+/// - YouTube, SoundCloud e Deezer (com conta) tocam direto do próprio serviço.
+/// - Se o serviço da faixa falhar (ou não entregar a faixa inteira, como o Spotify), a mesma música é
+///   procurada nos outros provedores de `order` e tentada do resultado mais parecido ao menos parecido.
+/// - Último recurso, só para o Deezer: o trecho de 30 s da API pública.
 pub async fn resolve(track: &TrackInfo, order: &[String]) -> Res<StreamInfo> {
     let (limit_on, diag) = flags();
     let t0 = std::time::Instant::now();
-    let r = limited(limit_on, ATTEMPT_LIMIT, &track.provider, resolve_inner(track, order)).await;
+    let r = resolve_inner(track, order, limit_on).await;
     if diag {
         match &r {
             Ok(s) => eprintln!("[diagnóstico] {} · {} → {} {} kbps via {} em {} ms", track.key(), track.title, s.codec, s.bitrate / 1000, s.source, t0.elapsed().as_millis()),
@@ -139,32 +145,34 @@ async fn limited<T>(on: bool, limit: Duration, who: &str, fut: impl std::future:
     }
 }
 
-async fn resolve_inner(track: &TrackInfo, order: &[String]) -> Res<StreamInfo> {
-    match track.provider.as_str() {
-        "youtube" => youtube::resolve(&track.id, track.duration_ms).await,
-        "soundcloud" => soundcloud::resolve(track).await,
-        "jiosaavn" => jiosaavn::resolve(track).await,
-        "local" => crate::local::resolve(track),
-        // Deezer e Spotify não entregam o áudio inteiro (DRM): toca-se a mesma música achada em outro provedor.
-        "deezer" | "spotify" => {
-            if let Some(m) = find_match(track, order).await {
-                let (limit_on, _) = flags();
-                match limited(limit_on, ATTEMPT_LIMIT, &m.provider, resolve_direct(&m)).await {
-                    Ok(s) => return Ok(s),
-                    Err(e) => eprintln!("[resolve] correspondência {} falhou: {e}", m.key()),
-                }
-            }
-            preview_stream(track)
+/// Quantas correspondências de outros provedores se tentam antes de desistir.
+const MAX_FALLBACKS: usize = 4;
+
+async fn resolve_inner(track: &TrackInfo, order: &[String], limit_on: bool) -> Res<StreamInfo> {
+    if track.provider == "local" { return crate::local::resolve(track); }
+    let own = match track.provider.as_str() {
+        "youtube" | "soundcloud" | "deezer" => limited(limit_on, ATTEMPT_LIMIT, &track.provider, resolve_direct(track)).await,
+        other => Err(format!("{other}: o áudio completo deste serviço é protegido")),
+    };
+    let mut last = match own { Ok(s) => return Ok(s), Err(e) => e };
+    eprintln!("[resolve] {} falhou ({last}); procurando a mesma música em outro provedor", track.key());
+    // Outros provedores primeiro (se o serviço da faixa está com problema, repetir nele não ajuda); depois o mesmo serviço.
+    let (same, others): (Vec<_>, Vec<_>) = matches_for(track, order).await.into_iter().partition(|m| m.provider == track.provider);
+    for m in others.into_iter().chain(same).take(MAX_FALLBACKS) {
+        match limited(limit_on, ATTEMPT_LIMIT, &m.provider, resolve_direct(&m)).await {
+            Ok(s) => return Ok(s),
+            Err(e) => { eprintln!("[resolve] correspondência {} falhou: {e}", m.key()); last = e; }
         }
-        other => Err(format!("provedor desconhecido: {other}")),
     }
+    if track.provider == "deezer" { return preview_stream(track); }
+    Err(last)
 }
 
 async fn resolve_direct(t: &TrackInfo) -> Res<StreamInfo> {
     match t.provider.as_str() {
         "youtube" => youtube::resolve(&t.id, t.duration_ms).await,
         "soundcloud" => soundcloud::resolve(t).await,
-        "jiosaavn" => jiosaavn::resolve(t).await,
+        "deezer" => deezer::resolve(t).await,
         "local" => crate::local::resolve(t),
         other => Err(format!("provedor não toca por inteiro: {other}")),
     }
@@ -176,7 +184,7 @@ fn preview_stream(track: &TrackInfo) -> Res<StreamInfo> {
         url,
         headers: vec![("User-Agent".into(), crate::http::BROWSER_UA.into())],
         mime: "audio/mpeg".into(), codec: "mp3".into(), bitrate: 128_000, content_length: None, ext: "mp3".into(),
-        expires_at_ms: now_ms() + 20 * 60 * 1000, source: "deezer-preview".into(), source_id: track.id.clone(), segments: vec![], loudness_lufs: None,
+        expires_at_ms: now_ms() + 20 * 60 * 1000, source: "deezer-preview".into(), source_id: track.id.clone(), segments: vec![], loudness_lufs: None, cipher: None,
     })
 }
 
@@ -185,7 +193,7 @@ pub fn invalidate(source: &str, id: &str) {
     match source {
         "youtube" => youtube::invalidate(id),
         "soundcloud" => soundcloud::invalidate(id),
-        "jiosaavn" => jiosaavn::invalidate(id),
+        "deezer" => deezer::invalidate(id),
         _ => {}
     }
 }
@@ -198,7 +206,6 @@ pub async fn other_home(provider: &str) -> Res<Vec<ytmusic::Section>> {
     }
     match provider {
         "spotify" => spotify::home().await,
-        "jiosaavn" => jiosaavn::home().await,
         "soundcloud" => {
             let (trending, top) = tokio::join!(soundcloud::chart("trending", 24), soundcloud::chart("top", 24));
             let out: Vec<_> = [list("Em alta", "SoundCloud", trending.unwrap_or_default()), list("Mais tocadas", "SoundCloud", top.unwrap_or_default())].into_iter().flatten().collect();

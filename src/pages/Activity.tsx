@@ -258,7 +258,7 @@ function WrappedStory({ recap, onBack }: { recap?: Recap; onBack?: () => void })
 }
 
 // ───────── Conta
-const SERVICE_LIST: [string, string, number, string][] = [["youtube", "YouTube Music", 25, "Início, biblioteca e sincronização"], ["deezer", "Deezer", 300, "Reprodução em FLAC e letras"], ["tidal", "TIDAL", 220, "Hi-Res e capas animadas"], ["spotify", "Spotify", 150, "Canvas, início e histórico"], ["soundcloud", "SoundCloud", 50, "Início personalizado"], ["lastfm", "Last.fm", 10, "Scrobbling"], ["discord", "Discord", 265, "Rich Presence"]];
+const SERVICE_LIST: [string, string, number, string][] = [["youtube", "YouTube Music", 25, "Início, biblioteca e sincronização"], ["deezer", "Deezer", 300, "Reprodução em FLAC e letras"], ["spotify", "Spotify", 150, "Canvas, início e histórico"], ["soundcloud", "SoundCloud", 50, "Início personalizado"], ["lastfm", "Last.fm", 10, "Scrobbling"], ["discord", "Discord", 265, "Rich Presence"]];
 export function AccountPage() {
   const libAccounts = useLib((s) => s.accounts), discordState = useDiscord((s) => s.state);
   const accounts: Record<string, string | undefined> = { ...libAccounts, discord: discordState === "ok" ? "Conectado" : undefined };

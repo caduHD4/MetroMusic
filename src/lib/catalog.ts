@@ -1,11 +1,11 @@
 // Catálogo simulado. Tudo aqui é fictício e gerado de forma determinística;
 // o backend substitui este módulo por chamadas reais aos provedores.
 
-export type SourceId = "youtube" | "tidal" | "spotify" | "soundcloud" | "deezer" | "jiosaavn" | "qobuz" | "offline";
+export type SourceId = "youtube" | "spotify" | "soundcloud" | "deezer" | "qobuz" | "offline";
 
 /** Faixa como o backend a descreve (espelha `TrackInfo` em src-tauri/src/model.rs). */
 export interface ExtInfo {
-  provider: "youtube" | "soundcloud" | "deezer" | "spotify" | "jiosaavn" | "local"; id: string; title: string; artists: string[];
+  provider: "youtube" | "soundcloud" | "deezer" | "spotify" | "local"; id: string; title: string; artists: string[];
   album?: string | null; durationMs?: number | null; isrc?: string | null; artworkUrl?: string | null;
   explicit?: boolean; url?: string | null; previewUrl?: string | null;
   /** ids de navegação do YouTube Music (álbum MPRE…, canal UC…) */
@@ -41,11 +41,9 @@ export interface Lyrics { synced: boolean; provider: string; lines: LyricLine[] 
 
 export const SOURCES: { id: SourceId; name: string; hue: number; home: boolean }[] = [
   { id: "youtube", name: "YouTube Music", hue: 25, home: true },
-  { id: "tidal", name: "TIDAL", hue: 220, home: true },
   { id: "spotify", name: "Spotify", hue: 150, home: true },
   { id: "soundcloud", name: "SoundCloud", hue: 50, home: true },
   { id: "deezer", name: "Deezer", hue: 300, home: true },
-  { id: "jiosaavn", name: "JioSaavn", hue: 175, home: true },
   { id: "qobuz", name: "Qobuz", hue: 250, home: false },
   { id: "offline", name: "Offline", hue: 200, home: true },
 ];
@@ -83,12 +81,10 @@ export const podcasts: Podcast[] = [];
 
 const FORMATS: [SourceId, string, string, string, Track["tier"]][] = [
   ["deezer", "FLAC", "1.411 kbps", "44,1 kHz / 16-bit", "Lossless"],
-  ["tidal", "FLAC", "4.608 kbps", "96 kHz / 24-bit", "Hi-Res"],
   ["qobuz", "FLAC", "9.216 kbps", "192 kHz / 24-bit", "Hi-Res"],
   ["youtube", "Opus", "160 kbps", "48 kHz", undefined],
   ["spotify", "AAC", "256 kbps", "44,1 kHz", undefined],
   ["soundcloud", "AAC", "160 kbps", "44,1 kHz", undefined],
-  ["tidal", "E-AC-3 JOC", "768 kbps", "48 kHz", "Atmos"],
   ["deezer", "MP3", "320 kbps", "44,1 kHz", undefined],
 ];
 
@@ -213,7 +209,8 @@ export const extLyrics = new Map<string, Lyrics | null>();
 const lyricsCache = new Map<string, Lyrics | null>();
 /** Letra sincronizada fictícia. `null` = letra não encontrada. */
 export function getLyrics(track: Track): Lyrics | null {
-  if (track.ext) return extLyrics.get(track.id) ?? null;
+  const mine = extLyrics.get(track.id); // letra buscada no backend ou escolhida/escrita pela pessoa
+  if (track.ext || mine) return mine ?? null;
   if (lyricsCache.has(track.id)) return lyricsCache.get(track.id)!;
   const n = Number(track.id.replace(/\D/g, "")) || 1;
   let out: Lyrics | null = null;

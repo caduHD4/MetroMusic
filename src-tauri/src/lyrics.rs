@@ -2,7 +2,8 @@
 //!
 //! - LrcLib: letra por linha (LRC) ou, na falta dela, sem sincronia.
 //! - BetterLyrics: TTML com tempo por palavra e vozes de apoio.
-//! A ordem vem das configurações; os demais provedores do MetroFuse ainda não foram portados.
+//! Os demais provedores (Apple Music, Musixmatch, QQ, LyricsPlus, Binimum, YouTube, Deezer) estão em `lyrics_more`.
+//! A ordem vem das configurações.
 
 use crate::http::{err, CLIENT};
 use crate::model::{Res, TrackInfo};
@@ -14,10 +15,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 
-pub const SUPPORTED: [&str; 4] = ["better", "lrclib", "kugou", "spotify"];
+pub const SUPPORTED: [&str; 12] = ["better", "apple", "lrclib", "musixmatch", "deezer", "spotify", "qq", "kugou", "bini", "plus", "youtube", "ytsub"];
 const UA: &str = "MetroMusic/0.1 (player de música desktop)";
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Word { pub t: f64, pub end: f64, pub w: String }
 
 #[derive(Serialize, Clone, Debug)]
@@ -36,7 +37,7 @@ pub struct Lyrics { pub synced: bool, pub provider: String, pub lines: Vec<Line>
 static CACHE: Lazy<Mutex<HashMap<String, Option<Lyrics>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Distribui o tempo da linha entre as palavras, proporcional ao tamanho (letra sem tempo por palavra).
-fn spread(text: &str, t: f64, end: f64) -> Vec<Word> {
+pub(crate) fn spread(text: &str, t: f64, end: f64) -> Vec<Word> {
     let ws: Vec<&str> = text.split_whitespace().collect();
     let total: usize = ws.iter().map(|w| w.chars().count() + 1).sum::<usize>().max(1);
     let mut at = t;
@@ -91,9 +92,9 @@ static CLEAN: Lazy<Vec<Regex>> = Lazy::new(|| {
     ].iter().map(|p| Regex::new(p).unwrap()).collect()
 });
 
-fn clean_title(t: &str) -> String { CLEAN.iter().fold(t.trim().to_string(), |acc, re| re.replace_all(&acc, "").to_string()).trim().to_string() }
+pub(crate) fn clean_title(t: &str) -> String { CLEAN.iter().fold(t.trim().to_string(), |acc, re| re.replace_all(&acc, "").to_string()).trim().to_string() }
 
-fn clean_artist(a: &str) -> String {
+pub(crate) fn clean_artist(a: &str) -> String {
     let a = a.trim();
     for sep in [" & ", " and ", ", ", " x ", " feat. ", " feat ", " ft. ", " ft ", " featuring ", " with "] {
         if let Some(i) = a.to_lowercase().find(sep) { return a[..i].trim().to_string(); }
@@ -155,7 +156,7 @@ async fn lrclib(t: &TrackInfo) -> Option<Lyrics> {
 // ───────── KuGou (LRC por linha, API pública)
 
 /// Remove as linhas de crédito que o KuGou coloca no começo (título, letrista, compositor).
-fn drop_credits(lines: Vec<Line>) -> Vec<Line> {
+pub(crate) fn drop_credits(lines: Vec<Line>) -> Vec<Line> {
     const MARKS: [&str; 8] = ["作词", "作曲", "编曲", "制作", "Lyrics by", "Composed by", "Written by", "Produced by"];
     lines.into_iter().enumerate().filter(|(i, l)| !(*i < 8 && l.t < 20.0 && (MARKS.iter().any(|m| l.text.contains(m)) || l.text.contains('：') || (*i == 0 && l.text.contains(" - "))))).map(|(_, l)| l).collect()
 }
@@ -302,20 +303,107 @@ async fn better(t: &TrackInfo) -> Option<Lyrics> {
     (!lines.is_empty()).then(|| Lyrics { synced: true, provider: "BetterLyrics".into(), lines })
 }
 
-/// Busca a letra nos provedores de `order` (na ordem). `None` = ninguém tem.
-pub async fn get(track: &TrackInfo, order: &[String]) -> Res<Option<Lyrics>> {
-    let key = format!("{}|{}", track.key(), order.join(","));
-    if let Some(hit) = CACHE.lock().get(&key) { return Ok(hit.clone()); }
-    let mut found = None;
-    let embedded_on = crate::settings::current().values.get("readEmbeddedLyrics").and_then(|v| v.as_bool()).unwrap_or(true);
-    if track.provider == "local" && embedded_on { found = crate::local::lyrics(std::path::Path::new(&track.id)); }
-    for p in order {
-        if found.is_some() { break; }
-        let r = match p.as_str() { "better" => better(track).await, "lrclib" => lrclib(track).await, "kugou" => kugou(track).await, "spotify" => spotify(track).await, _ => None };
-        if r.is_some() { found = r; break; }
+/// Ordem padrão (a do MetroFuse, mais os provedores extras do MetroMusic no fim).
+pub const DEFAULT_ORDER: [&str; 12] = ["better", "lrclib", "spotify", "kugou", "apple", "musixmatch", "qq", "plus", "bini", "deezer", "ytsub", "youtube"];
+
+/// Ordem escolhida em Configurações › Provedores de letra (sem os desligados); vale para downloads e outras buscas sem tela.
+pub fn configured_order() -> Vec<String> {
+    let st = crate::settings::current();
+    let list = |k: &str| st.values.get(k).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>());
+    let mut order = list("lyricsOrder").unwrap_or_default();
+    for d in DEFAULT_ORDER { if !order.iter().any(|o| o == d) { order.push(d.to_string()); } }
+    let off = list("lyricsOff").unwrap_or_default();
+    order.into_iter().filter(|p| SUPPORTED.contains(&p.as_str()) && !off.contains(p)).collect()
+}
+
+/// Tempo máximo de cada provedor (o MetroFuse usa 8 s) e de toda a busca em sequência.
+const PER_PROVIDER: Duration = Duration::from_secs(8);
+const TOTAL: Duration = Duration::from_secs(25);
+
+async fn from_provider(p: &str, track: &TrackInfo) -> Option<Lyrics> {
+    use crate::lyrics_more as m;
+    let run = async {
+        match p {
+            "better" => better(track).await, "lrclib" => lrclib(track).await, "kugou" => kugou(track).await, "spotify" => spotify(track).await,
+            "apple" => m::apple(track).await, "musixmatch" => m::musixmatch(track).await, "plus" => m::plus(track).await, "bini" => m::bini(track).await,
+            "qq" => m::qq(track).await, "youtube" => m::youtube(track).await, "ytsub" => m::ytsub(track).await, "deezer" => m::deezer(track).await, _ => None,
+        }
+    };
+    tokio::time::timeout(PER_PROVIDER, run).await.ok().flatten()
+}
+
+/// Depois da primeira letra sincronizada válida, quanto esperar pelos provedores que ainda não responderam
+/// (uma delas pode ser palavra a palavra e vencer).
+const GRACE: Duration = Duration::from_millis(3000);
+
+/// Nota de uma letra para a escolha automática: o tipo manda (palavra a palavra > linha a linha > sem sincronia);
+/// a ordem das configurações desempata; uma letra sincronizada que passa da duração da faixa é de outra versão.
+pub(crate) fn score(l: &Lyrics, idx: usize, n: usize, dur_s: f64) -> i32 {
+    let mut s = if has_word_timing(l) { 300 } else if l.synced { 200 } else { 50 };
+    s += (n - idx.min(n)) as i32;
+    if l.synced && dur_s > 0.0 {
+        if l.lines.last().map_or(false, |x| x.t > dur_s + 8.0) { s -= 400; }
+        if l.lines.len() < 4 { s -= 100; }
     }
-    CACHE.lock().insert(key, found.clone());
+    s
+}
+
+/// Letra utilizável como sincronizada: tem tempos e cabe na faixa.
+fn trusted(l: &Lyrics, dur_s: f64) -> bool { l.synced && score(l, 0, 0, dur_s) >= 200 }
+
+/// Busca a letra pelo **melhor resultado** entre os provedores de `order` (todos ao mesmo tempo): palavra a palavra
+/// vence linha a linha, que vence sem sincronia; em empate vale a ordem. `None` = ninguém tem. `force` ignora o cache.
+pub async fn get(track: &TrackInfo, order: &[String], force: bool) -> Res<Option<Lyrics>> {
+    use futures_util::stream::{FuturesUnordered, StreamExt};
+    let key = format!("{}|{}", track.key(), order.join(","));
+    if !force { if let Some(hit) = CACHE.lock().get(&key) { return Ok(hit.clone()); } }
+    let embedded_on = crate::settings::current().values.get("readEmbeddedLyrics").and_then(|v| v.as_bool()).unwrap_or(true);
+    let mut found = if track.provider == "local" && embedded_on { crate::local::lyrics(std::path::Path::new(&track.id)) } else { None };
+    if found.is_none() {
+        let dur = track.duration_ms.unwrap_or(0) as f64 / 1000.0;
+        let n = order.len();
+        let mut pending: FuturesUnordered<_> = order.iter().enumerate().map(|(i, p)| async move { (i, from_provider(p, track).await) }).collect();
+        let (start, mut first_trusted) = (std::time::Instant::now(), None::<std::time::Instant>);
+        let mut done = vec![false; n];
+        let mut got: Vec<(usize, Lyrics)> = vec![];
+        loop {
+            let left = TOTAL.saturating_sub(start.elapsed());
+            let wait = first_trusted.map_or(left, |t0| left.min(GRACE.saturating_sub(t0.elapsed())));
+            let Ok(Some((i, r))) = tokio::time::timeout(wait, pending.next()).await else { break };
+            done[i] = true;
+            if let Some(l) = r {
+                if first_trusted.is_none() && trusted(&l, dur) { first_trusted = Some(std::time::Instant::now()); }
+                got.push((i, l));
+            }
+            // nada pode superar uma palavra a palavra confiável se todos os provedores de maior prioridade já responderam
+            if let Some((bi, bl)) = got.iter().max_by_key(|(i, l)| score(l, *i, n, dur)) {
+                if has_word_timing(bl) && trusted(bl, dur) && done[..*bi].iter().all(|d| *d) { break; }
+            }
+        }
+        found = got.into_iter().max_by_key(|(i, l)| score(l, *i, n, dur)).map(|(_, l)| l);
+    }
+    // só guarda o que foi achado: uma falha de rede não pode virar "sem letra" até reiniciar o app
+    if found.is_some() { CACHE.lock().insert(key, found.clone()); } else { CACHE.lock().remove(&key); }
     Ok(found)
+}
+
+/// Uma opção da busca manual: a letra e se tem tempo por palavra de verdade (e não só distribuído pela linha).
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Candidate { #[serde(flatten)] pub lyrics: Lyrics, pub word_sync: bool }
+
+fn has_word_timing(l: &Lyrics) -> bool {
+    l.synced && l.lines.iter().any(|ln| ln.words.len() > 1 && ln.words != spread(&ln.text, ln.t, ln.end))
+}
+
+/// Pergunta a todos os provedores de `order` ao mesmo tempo, com o título/artista que o usuário digitou.
+/// Devolve uma letra por provedor que respondeu (na ordem pedida), para a pessoa escolher.
+pub async fn search_all(base: &TrackInfo, title: &str, artist: &str, order: &[String]) -> Vec<Candidate> {
+    let mut t = base.clone();
+    t.title = title.trim().to_string();
+    if !artist.trim().is_empty() { t.artists = artist.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect(); }
+    let jobs = order.iter().map(|p| { let t = t.clone(); let p = p.clone(); async move { from_provider(&p, &t).await } });
+    futures_util::future::join_all(jobs).await.into_iter().flatten().map(|l| Candidate { word_sync: has_word_timing(&l), lyrics: l }).collect()
 }
 
 #[allow(dead_code)]
@@ -357,6 +445,34 @@ mod tests {
         let lines = super::decode_kugou(&b64).unwrap();
         assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), vec!["Yeah", "I've been tryna call"]);
         assert!(super::decode_kugou("não é base64!!").is_none());
+    }
+
+    #[test]
+    fn detecta_tempo_por_palavra() {
+        let lrc = Lyrics { synced: true, provider: "x".into(), lines: parse_lrc("[00:01.00] um dois tres\n[00:05.00] quatro") };
+        assert!(!has_word_timing(&lrc));
+        let ttml = r#"<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="0:01.000" end="0:03.000"><span begin="0:01.000" end="0:01.200">Oi </span><span begin="0:01.200" end="0:03.000">mundo</span></p></div></body></tt>"#;
+        assert!(has_word_timing(&Lyrics { synced: true, provider: "x".into(), lines: parse_ttml(ttml) }));
+    }
+
+    fn lrc(n: usize, step: f64) -> Lyrics { Lyrics { synced: true, provider: "x".into(), lines: (0..n).map(|i| Line { t: i as f64 * step, end: i as f64 * step + 2.0, text: format!("l{i}"), words: vec![], bg: false, agent: None }).collect() } }
+
+    #[test]
+    fn escolha_automatica_pela_nota() {
+        let ttml = r#"<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="0:01.000" end="0:03.000"><span begin="0:01.000" end="0:01.200">Oi </span><span begin="0:01.200" end="0:03.000">mundo</span></p></div></body></tt>"#;
+        let mut word = Lyrics { synced: true, provider: "w".into(), lines: parse_ttml(ttml) };
+        word.lines.extend(lrc(10, 10.0).lines); // 5+ linhas, cabe em 200 s
+        let line = lrc(30, 6.0);
+        let plain = Lyrics { synced: false, provider: "p".into(), lines: plain_lines("a\nb\nc") };
+        // palavra a palavra > linha > sem sincronia, mesmo com prioridade pior
+        assert!(score(&word, 5, 6, 200.0) > score(&line, 0, 6, 200.0));
+        assert!(score(&line, 5, 6, 200.0) > score(&plain, 0, 6, 200.0));
+        // em empate de tipo, vale a ordem
+        assert!(score(&line, 0, 6, 200.0) > score(&line, 3, 6, 200.0));
+        // sincronizada que passa da duração da faixa é de outra versão: perde até para a sem sincronia
+        let longa = lrc(30, 10.0); // termina em 290 s numa faixa de 200 s
+        assert!(score(&longa, 0, 6, 200.0) < score(&plain, 5, 6, 200.0));
+        assert!(!trusted(&longa, 200.0) && trusted(&line, 200.0));
     }
 
     #[test]

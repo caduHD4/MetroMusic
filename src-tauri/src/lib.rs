@@ -23,6 +23,8 @@ mod awake;
 mod http;
 mod lastfm;
 mod lyrics;
+mod lyrics_more;
+mod qqdes;
 mod model;
 mod playback;
 mod preload;
@@ -229,13 +231,13 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             toggle_mini, show_main_window, set_close_to_tray, update_now_playing, dev_flag,
-            files::file_read_text, files::file_write_text, settings::settings_load, settings::settings_save, commands::content_prefs_set, commands::audio_quality_set, ai::ai_translate, discord::discord_set, commands::provider_health, commands::source_candidates, commands::spotify_canvas, local::local_scan, local::local_index_load, local::local_probe, importer::import_match, images::image_fetch, images::image_cache_stats, images::image_cache_clear, downloads::download_track, downloads::download_delete, downloads::download_missing, local::local_watch, awake::keep_awake_set, links::open_url,
+            files::file_read_text, files::file_write_text, files::file_write_base64, settings::settings_load, settings::settings_save, commands::content_prefs_set, commands::audio_quality_set, ai::ai_translate, discord::discord_set, commands::provider_health, commands::source_candidates, commands::spotify_canvas, local::local_scan, local::local_index_load, local::local_probe, importer::import_match, images::image_fetch, images::image_cache_stats, images::image_cache_clear, downloads::download_track, downloads::download_delete, downloads::download_missing, local::local_watch, awake::keep_awake_set, links::open_url,
             commands::search_online, commands::audio_play, commands::audio_pause, commands::audio_resume, commands::audio_seek,
             commands::audio_stop, commands::audio_set_volume, commands::audio_set_speed, commands::audio_set_eq,
             commands::audio_set_normalization, commands::audio_set_crossfade, commands::audio_advance, commands::audio_set_next,
             commands::audio_precache,
             commands::cache_stats, commands::cache_clear, commands::cache_configure,
-            commands::yt_home, commands::yt_page, commands::yt_page_partial, commands::yt_page_more, commands::yt_radio, commands::lyrics_get, commands::yt_login_start, commands::yt_login_cancel, commands::yt_login_cookie, commands::yt_account, commands::yt_logout, commands::yt_library, commands::yt_rate, commands::yt_mark_played, commands::yt_explore, commands::other_home, commands::playlists_editable, commands::playlist_add, commands::playlist_remove, commands::playlist_move, commands::playlist_create, commands::playlist_rename, commands::playlist_delete, commands::library_save, commands::sp_status, commands::sp_login_start, commands::sp_login_cancel, commands::sp_login_cookie, commands::sp_account, commands::sp_logout, commands::sp_library, commands::sp_page, commands::sp_rate, commands::sc_login_start, commands::sc_login_cancel, commands::sc_login_token, commands::sc_account, commands::sc_logout, commands::sc_library, commands::sc_playlist, commands::sc_rate, commands::lastfm_status, commands::lastfm_login, commands::lastfm_logout, commands::lastfm_now_playing, commands::lastfm_scrobble, commands::lastfm_love,
+            commands::yt_home, commands::yt_page, commands::yt_page_partial, commands::yt_page_more, commands::yt_radio, commands::lyrics_get, commands::lyrics_search, commands::yt_login_start, commands::yt_login_cancel, commands::yt_login_cookie, commands::yt_account, commands::yt_logout, commands::yt_library, commands::yt_rate, commands::yt_mark_played, commands::yt_explore, commands::other_home, commands::playlists_editable, commands::playlist_add, commands::playlist_remove, commands::playlist_move, commands::playlist_create, commands::playlist_rename, commands::playlist_delete, commands::library_save, commands::sp_status, commands::sp_login_start, commands::sp_login_cancel, commands::sp_login_cookie, commands::sp_account, commands::sp_logout, commands::sp_library, commands::sp_page, commands::sp_rate, commands::sc_login_start, commands::sc_login_cancel, commands::sc_login_token, commands::sc_account, commands::sc_logout, commands::sc_library, commands::sc_playlist, commands::sc_rate, commands::deezer_login_start, commands::deezer_login_cancel, commands::deezer_login_token, commands::deezer_account, commands::deezer_logout, commands::lastfm_status, commands::lastfm_login, commands::lastfm_logout, commands::lastfm_now_playing, commands::lastfm_scrobble, commands::lastfm_love,
         ])
         .setup(|app| {
             // As configurações vêm primeiro: o cliente HTTP lê o proxy delas ao ser criado.
@@ -250,6 +252,7 @@ pub fn run() {
             lastfm::init(app.path().app_data_dir()?.join("lastfm.json"));
             providers::spotify::init(app.path().app_data_dir()?.join("spotify-auth.json"));
             providers::sc_account::init(app.path().app_data_dir()?.join("soundcloud-auth.txt"));
+            providers::deezer::init(app.path().app_data_dir()?.join("deezer-auth.txt"));
             // Sem bandeja (ex.: ambiente sem appindicator) o app segue funcionando; só não esconde a janela.
             if let Err(e) = setup_tray(app.handle()) {
                 eprintln!("[bandeja] indisponível: {e}");

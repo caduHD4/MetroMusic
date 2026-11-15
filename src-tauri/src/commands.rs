@@ -96,10 +96,18 @@ pub async fn yt_radio(video_id: Option<String>, playlist_id: Option<String>) -> 
 
 // ───────── Letras
 
+fn supported(order: Vec<String>) -> Vec<String> { order.into_iter().filter(|p| crate::lyrics::SUPPORTED.contains(&p.as_str())).collect() }
+
+/// `force`: ignora o cache (menu › "Buscar de novo").
 #[tauri::command]
-pub async fn lyrics_get(track: TrackInfo, order: Vec<String>) -> Res<Option<crate::lyrics::Lyrics>> {
-    let supported: Vec<String> = order.into_iter().filter(|p| crate::lyrics::SUPPORTED.contains(&p.as_str())).collect();
-    crate::lyrics::get(&track, &supported).await
+pub async fn lyrics_get(track: TrackInfo, order: Vec<String>, force: Option<bool>) -> Res<Option<crate::lyrics::Lyrics>> {
+    crate::lyrics::get(&track, &supported(order), force.unwrap_or(false)).await
+}
+
+/// Menu › "Buscar outra letra…": uma letra por provedor que respondeu à busca com o título/artista digitados.
+#[tauri::command]
+pub async fn lyrics_search(track: TrackInfo, title: String, artist: String, order: Vec<String>) -> Res<Vec<crate::lyrics::Candidate>> {
+    Ok(crate::lyrics::search_all(&track, &title, &artist, &supported(order)).await)
 }
 
 // ───────── Contas
@@ -237,13 +245,26 @@ async fn finish_sc_login(raw: &str) -> Res<providers::sc_account::Me> {
     match providers::sc_account::me().await { Ok(m) => Ok(m), Err(e) => { providers::sc_account::clear(); Err(e) } }
 }
 
-/// Abre a página de login do SoundCloud (sessão anônima) e espera o cookie `oauth_token`.
+/// Pasta do perfil do navegador das janelas de login do SoundCloud e do Deezer.
+///
+/// Como no MetroFuse (WebView do Android, cookies persistentes e o User-Agent do próprio navegador), a janela
+/// não é anônima e não finge ser outro navegador: perfil novo + User-Agent trocado é o que faz o serviço
+/// pedir verificação de segurança. Fica só neste computador e é apagada ao sair da conta.
+fn login_profile(app: &AppHandle) -> Option<std::path::PathBuf> { app.path().app_data_dir().ok().map(|d| d.join("login-profile")) }
+
+fn clear_login_profile(app: &AppHandle) { if let Some(d) = login_profile(app) { let _ = std::fs::remove_dir_all(d); } }
+
+fn open_login_window(app: &AppHandle, label: &str, url: &str, title: &str, height: f64) -> Res<tauri::WebviewWindow> {
+    let mut b = WebviewWindowBuilder::new(app, label, WebviewUrl::External(url.parse().map_err(|e| format!("{e}"))?)).title(title).inner_size(520.0, height).center();
+    if let Some(dir) = login_profile(app) { b = b.data_directory(dir); }
+    b.build().map_err(|e| format!("não foi possível abrir a janela de login: {e}"))
+}
+
+/// Abre a página de login do SoundCloud e espera o cookie `oauth_token`.
 #[tauri::command]
 pub async fn sc_login_start(app: AppHandle) -> Res<()> {
     if let Some(w) = app.get_webview_window(SC_LABEL) { let _ = w.set_focus(); return Ok(()); }
-    let win = WebviewWindowBuilder::new(&app, SC_LABEL, WebviewUrl::External("https://soundcloud.com/signin".parse().map_err(|e| format!("{e}"))?))
-        .title("Entrar no SoundCloud").inner_size(520.0, 740.0).center().incognito(true).user_agent(LOGIN_UA)
-        .build().map_err(|e| format!("não foi possível abrir a janela de login: {e}"))?;
+    let win = open_login_window(&app, SC_LABEL, "https://soundcloud.com/signin", "Entrar no SoundCloud", 740.0)?;
     let site: tauri::Url = "https://soundcloud.com/".parse().unwrap();
     tauri::async_runtime::spawn(async move {
         let emit = |ev: ScLoginEvent| { let _ = app.emit("sc:login", ev); };
@@ -280,7 +301,63 @@ pub async fn sc_account() -> Res<Option<providers::sc_account::Me>> {
 }
 
 #[tauri::command]
-pub fn sc_logout() { providers::sc_account::clear() }
+pub fn sc_logout(app: AppHandle) { providers::sc_account::clear(); if app.get_webview_window(DZ_LABEL).is_none() { clear_login_profile(&app); } }
+
+const DZ_LABEL: &str = "dzlogin";
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DzLoginEvent { ok: bool, cancelled: bool, error: Option<String>, account: Option<providers::deezer::Me> }
+
+/// Guarda o `arl` e confirma a sessão; se o Deezer não reconhecer, esquece.
+async fn finish_dz_login(raw: &str) -> Res<providers::deezer::Me> {
+    providers::deezer::set_arl(raw)?;
+    match providers::deezer::me().await { Ok(m) => Ok(m), Err(e) => { providers::deezer::clear(); Err(e) } }
+}
+
+/// Abre a página de login do Deezer (a mesma do MetroFuse) e espera o cookie `arl`.
+#[tauri::command]
+pub async fn deezer_login_start(app: AppHandle) -> Res<()> {
+    if let Some(w) = app.get_webview_window(DZ_LABEL) { let _ = w.set_focus(); return Ok(()); }
+    let win = open_login_window(&app, DZ_LABEL, "https://www.deezer.com/login", "Entrar no Deezer", 760.0)?;
+    let site: tauri::Url = "https://www.deezer.com/".parse().unwrap();
+    tauri::async_runtime::spawn(async move {
+        let emit = |ev: DzLoginEvent| { let _ = app.emit("dz:login", ev); };
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            if app.get_webview_window(DZ_LABEL).is_none() { return emit(DzLoginEvent { ok: false, cancelled: true, error: None, account: None }); }
+            let Ok(cookies) = win.cookies_for_url(site.clone()) else { continue };
+            let Some(arl) = cookies.iter().find(|c| c.name() == "arl" && c.value().len() >= 40).map(|c| c.value().to_string()) else { continue };
+            let result = finish_dz_login(&arl).await;
+            let _ = win.close();
+            return emit(match result {
+                Ok(m) => DzLoginEvent { ok: true, cancelled: false, error: None, account: Some(m) },
+                Err(e) => DzLoginEvent { ok: false, cancelled: false, error: Some(e), account: None },
+            });
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn deezer_login_cancel(app: AppHandle) { if let Some(w) = app.get_webview_window(DZ_LABEL) { let _ = w.close(); } }
+
+/// Entra no Deezer com o cookie `arl` colado à mão.
+#[tauri::command]
+pub async fn deezer_login_token(token: String) -> Res<providers::deezer::Me> { finish_dz_login(&token).await }
+
+#[tauri::command]
+pub async fn deezer_account() -> Res<Option<providers::deezer::Me>> {
+    if !providers::deezer::is_logged_in() { return Ok(None); }
+    match providers::deezer::me().await {
+        Ok(m) => Ok(Some(m)),
+        Err(e) if e.contains("não é válida") => { providers::deezer::clear(); Ok(None) }
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub fn deezer_logout(app: AppHandle) { providers::deezer::clear(); if app.get_webview_window(SC_LABEL).is_none() { clear_login_profile(&app); } }
 
 #[tauri::command]
 pub async fn sc_library(kind: String) -> Res<ytmusic::Page> { providers::sc_account::library(&kind).await }
@@ -450,10 +527,7 @@ pub fn content_prefs_set(language: String, country: String, login_for_browse: bo
 
 /// Qualidade do áudio (Configurações › Player e áudio).
 #[tauri::command]
-pub fn audio_quality_set(quality: String, soundcloud: Option<String>, jio_quality: Option<String>, jio_language: Option<String>) {
-    if let Some(q) = jio_quality {
-        if providers::prefs::set_jio(&q, &jio_language.unwrap_or_default()) { providers::jiosaavn::clear_streams(); }
-    }
+pub fn audio_quality_set(quality: String, soundcloud: Option<String>) {
     providers::prefs::set_quality(&quality);
     if let Some(q) = soundcloud { if providers::prefs::set_sc_quality(&q) { providers::soundcloud::clear_streams(); } }
 }

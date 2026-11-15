@@ -143,7 +143,7 @@ pub fn resolve(track: &TrackInfo) -> Res<StreamInfo> {
     let codec = match ext.as_str() { "mp3" => "mp3", "flac" => "flac", "m4a" | "mp4" | "aac" => "aac", "ogg" | "oga" => "vorbis", "wav" => "pcm", _ => "" };
     Ok(StreamInfo {
         url: format!("file://{}", track.id), headers: vec![], mime: mime_of(&ext).into(), codec: codec.into(), bitrate: 0,
-        content_length: Some(md.len()), ext, expires_at_ms: now_ms() + 365 * 24 * 3600 * 1000, source: "local".into(), source_id: track.id.clone(), segments: vec![], loudness_lufs: None,
+        content_length: Some(md.len()), ext, expires_at_ms: now_ms() + 365 * 24 * 3600 * 1000, source: "local".into(), source_id: track.id.clone(), segments: vec![], loudness_lufs: None, cipher: None,
     })
 }
 

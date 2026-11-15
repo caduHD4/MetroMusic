@@ -70,7 +70,7 @@ async fn net_deezer_e_correspondencia() {
     assert!(m.is_some(), "o Deezer deveria achar a mesma música em outro provedor");
     let s = resolve(&r[0], &order).await.expect("resolve via correspondência");
     println!("Deezer tocará via: {} ({})", s.source, s.codec);
-    assert!(s.source == "youtube" || s.source == "soundcloud");
+    assert!(["youtube", "soundcloud", "deezer"].contains(&s.source.as_str()));
 }
 
 /// Baixa o stream inteiro (em blocos com Range) para um arquivo.
@@ -173,18 +173,18 @@ async fn net_ytmusic_inicio_e_paginas() {
 #[ignore]
 async fn net_letras() {
     let t = TrackInfo { provider: "youtube".into(), id: "J7p4bzqLvCw".into(), title: "Blinding Lights".into(), artists: vec!["The Weeknd".into()], album: Some("After Hours".into()), duration_ms: Some(202_000), ..Default::default() };
-    for p in ["better", "lrclib", "kugou"] {
-        let l = crate::lyrics::get(&t, &[p.to_string()]).await.unwrap();
+    for p in ["better", "lrclib", "kugou", "apple", "musixmatch", "plus", "bini", "qq", "youtube", "ytsub", "spotify", "deezer"] {
+        let l = crate::lyrics::get(&t, &[p.to_string()], true).await.unwrap();
         match l {
             Some(l) => println!("LETRA {p}: {} | sincronizada={} | {} linhas | 1ª: {:?} | palavras da 1ª: {} | bg={}", l.provider, l.synced, l.lines.len(), l.lines[0].text, l.lines[0].words.len(), l.lines.iter().filter(|x| x.bg).count()),
             None => println!("LETRA {p}: não encontrada"),
         }
     }
     let ordem = vec!["better".to_string(), "lrclib".to_string()];
-    let todos = crate::lyrics::get(&t, &ordem).await.unwrap();
+    let todos = crate::lyrics::get(&t, &ordem, true).await.unwrap();
     assert!(todos.is_some(), "nenhum provedor achou a letra");
     let raro = TrackInfo { provider: "youtube".into(), id: "x".into(), title: "zzzxqj faixa inexistente 91827".into(), artists: vec!["ninguem".into()], ..Default::default() };
-    println!("LETRA inexistente: {:?}", crate::lyrics::get(&raro, &ordem).await.unwrap().is_some());
+    println!("LETRA inexistente: {:?}", crate::lyrics::get(&raro, &ordem, true).await.unwrap().is_some());
 }
 
 #[tokio::test]
@@ -697,10 +697,9 @@ async fn net_conteudo_idioma_e_pais() {
 async fn net_saude_dos_provedores() {
     let all = crate::providers::health::check_all().await;
     for h in &all { println!("SAUDE {:<11} {:<11} {:>5} ms  {}", h.id, h.status, h.ms, h.detail); }
-    assert_eq!(all.len(), 6);
+    assert_eq!(all.len(), 4);
     let by = |id: &str| all.iter().find(|h| h.id == id).unwrap();
     assert_ne!(by("youtube").status, "offline", "YouTube Music deveria responder");
-    assert_eq!(by("tidal").status, "unavailable");
     assert_eq!(by("qobuz").status, "unavailable");
 }
 
@@ -717,34 +716,6 @@ async fn net_qualidade_do_audio() {
     }
     crate::providers::prefs::set_quality("max");
     assert!(got[0] <= got[1] && got[1] <= got[2], "low ≤ high ≤ max: {got:?}");
-}
-
-/// JioSaavn de verdade: busca, URL assinada na qualidade pedida (a taxa vem da URL) e início por idioma. Não baixa o áudio (CDN dá 403).
-#[tokio::test]
-#[ignore]
-async fn net_jiosaavn() {
-    use crate::providers::{jiosaavn, prefs};
-    let found = jiosaavn::search("arijit singh tum hi ho", 5).await.expect("busca");
-    assert!(!found.is_empty(), "a busca deveria achar faixas");
-    let t = &found[0];
-    println!("JIO achou: {} — {} ({:?} ms)", t.title, t.artist_line(), t.duration_ms);
-    let mut rates = vec![];
-    for q in ["320", "96"] {
-        prefs::set_jio(q, "english");
-        jiosaavn::clear_streams();
-        let s = jiosaavn::resolve(t).await.expect("stream");
-        println!("JIO qualidade {q}: {} kbps {}", s.bitrate / 1000, &s.url[..60.min(s.url.len())]);
-        // A CDN (web.saavncdn.com) responde 403 a clientes que não são o site; por isso o áudio NÃO é baixado aqui
-        // e o JioSaavn não está ligado à reprodução na interface.
-        rates.push(s.bitrate);
-    }
-    assert!(rates[0] > rates[1], "320 deveria ser maior que 96: {rates:?}");
-    for lang in ["hindi", "english"] {
-        prefs::set_jio("320", lang);
-        let home = jiosaavn::home().await.expect("início");
-        println!("JIO início {lang}: {} seções, {} faixas na primeira", home.len(), home[0].items.len());
-        assert!(!home[0].items.is_empty());
-    }
 }
 
 /// Link de faixa: o rádio da faixa começa por ela mesma (é o que `openLinks` toca).
@@ -839,4 +810,76 @@ async fn net_assinatura_da_release() {
     // e um arquivo adulterado é recusado
     let mut ruim = bytes.to_vec(); ruim[100] ^= 0xFF;
     assert!(pk.verify(&ruim, &sig, false).is_err(), "arquivo alterado não pode passar");
+}
+
+/// Deezer pela conta (`DEEZER_ARL` no ambiente): resolve, baixa o início, decifra como o cache faz e confere o formato.
+#[tokio::test]
+#[ignore]
+async fn net_deezer_conta() {
+    let Ok(arl) = std::env::var("DEEZER_ARL") else { println!("DEEZER_ARL ausente; teste pulado"); return };
+    deezer::set_arl(&arl).expect("arl");
+    let me = deezer::me().await.expect("sessão");
+    println!("DZ conta: {} premium={}", me.name, me.premium);
+    let found = deezer::search("billie jean michael jackson", 3).await.expect("busca");
+    let t = &found[0];
+    let s = deezer::resolve(t).await.expect("stream");
+    println!("DZ stream: {} {} {} bps len={:?} cipher={}", s.codec, s.ext, s.bitrate, s.content_length, s.cipher.is_some());
+    let mut req = CLIENT.get(&s.url).header("Range", "bytes=0-524287");
+    for (k, v) in &s.headers { req = req.header(k.as_str(), v.as_str()); }
+    let resp = req.send().await.expect("download");
+    assert_eq!(resp.status().as_u16(), 206);
+    let mut bytes = resp.bytes().await.expect("corpo").to_vec();
+    if let Some(id) = &s.cipher { deezer::decrypt_stripe(id, 0, &mut bytes).expect("decifrar"); }
+    let head = &bytes[..4];
+    println!("DZ início decifrado: {:02x?}", head);
+    assert!(head == b"fLaC" || &head[..3] == b"ID3" || (head[0] == 0xff && head[1] & 0xe0 == 0xe0), "bytes não parecem áudio");
+    // percorre os quadros MP3 do começo ao fim do trecho: cada bloco cifrado (0, 3, 6…) precisa ter saído certo
+    if s.codec == "mp3" {
+        let (br, sr) = ([0u32, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], [44100u32, 48000, 32000]);
+        let mut p = if bytes.starts_with(b"ID3") { 10 + (((bytes[6] as usize) << 21) | ((bytes[7] as usize) << 14) | ((bytes[8] as usize) << 7) | bytes[9] as usize) } else { 0 };
+        let mut frames = 0;
+        while p + 4 <= bytes.len() && bytes[p] == 0xff && bytes[p + 1] & 0xfe == 0xfa {
+            let (b, r, pad) = ((bytes[p + 2] >> 4) as usize, ((bytes[p + 2] >> 2) & 3) as usize, ((bytes[p + 2] >> 1) & 1) as usize);
+            if b == 0 || b >= 15 || r >= 3 { break }
+            p += (144 * br[b] * 1000 / sr[r]) as usize + pad;
+            frames += 1;
+        }
+        println!("DZ quadros MP3 consecutivos em {} bytes: {frames}", bytes.len());
+        assert!(frames > 1000, "decifragem falhou em algum bloco (só {frames} quadros válidos)");
+    }
+}
+
+/// Se o áudio do YouTube falhar, a faixa cai sozinha para a correspondência mais próxima de outro provedor.
+#[tokio::test]
+#[ignore]
+async fn net_fallback_do_youtube() {
+    let ruim = TrackInfo { provider: "youtube".into(), id: "XXXXXXXXXXX".into(), title: "Billie Jean".into(), artists: vec!["Michael Jackson".into()], duration_ms: Some(294_000), ..Default::default() };
+    let order = vec!["youtube".to_string(), "soundcloud".to_string(), "deezer".to_string()];
+    let s = resolve(&ruim, &order).await.expect("deveria cair para outro provedor");
+    println!("FALLBACK: tocou via {} ({} {})", s.source, s.codec, s.source_id);
+    assert_ne!(s.source_id, "XXXXXXXXXXX");
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_ytsub() {
+    let t = TrackInfo { provider: "youtube".into(), id: "dQw4w9WgXcQ".into(), title: "Never Gonna Give You Up".into(), artists: vec!["Rick Astley".into()], duration_ms: Some(213_000), ..Default::default() };
+    let l = crate::lyrics::get(&t, &["ytsub".to_string()], true).await.unwrap().expect("legenda do YouTube");
+    println!("YTSUB {} | sincronizada={} | {} linhas | 1ª: {:?} @ {:.1}s", l.provider, l.synced, l.lines.len(), l.lines[0].text, l.lines[0].t);
+    assert!(l.synced && l.lines.len() > 20);
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_letra_melhor() {
+    let ordem: Vec<String> = crate::lyrics::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect();
+    for (id, title, artist, ms) in [("J7p4bzqLvCw", "Blinding Lights", "The Weeknd", 202_000u64), ("dQw4w9WgXcQ", "Never Gonna Give You Up", "Rick Astley", 213_000), ("x", "Garota de Ipanema", "Tom Jobim", 170_000)] {
+        let t = TrackInfo { provider: "youtube".into(), id: id.into(), title: title.into(), artists: vec![artist.into()], duration_ms: Some(ms), ..Default::default() };
+        let t0 = std::time::Instant::now();
+        let l = crate::lyrics::get(&t, &ordem, true).await.unwrap();
+        match l {
+            Some(l) => println!("MELHOR {title}: {} | sync={} | {} linhas | palavras reais={} | {:.1}s", l.provider, l.synced, l.lines.len(), l.lines.iter().any(|x| x.words.len() > 1 && x.words != crate::lyrics::spread(&x.text, x.t, x.end)), t0.elapsed().as_secs_f32()),
+            None => println!("MELHOR {title}: nada | {:.1}s", t0.elapsed().as_secs_f32()),
+        }
+    }
 }

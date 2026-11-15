@@ -85,8 +85,7 @@ pub async fn download_stream(cache: &Arc<Cache>, track: &TrackInfo, stream: Stre
             if let Some(u) = track.artwork_url.as_deref().filter(|u| u.starts_with("http")) { data.cover = fetch_cover(u).await; }
         }
         if opts.embed_lyrics {
-            let order = vec!["better".to_string(), "lrclib".to_string()];
-            if let Ok(Some(l)) = crate::lyrics::get(track, &order).await { data.lyrics = Some(lyrics_text(&l)); }
+            if let Ok(Some(l)) = crate::lyrics::get(track, &crate::lyrics::configured_order(), false).await { data.lyrics = Some(lyrics_text(&l)); }
         }
         if !opts.write_tags { data.title.clear(); data.artists.clear(); data.album = None; data.cover = None; }
         let dest2 = dest.clone();
@@ -193,7 +192,7 @@ mod tests {
 
     fn stream(base: &str, id: &str) -> StreamInfo {
         StreamInfo { url: format!("{base}/a.wav"), headers: vec![], mime: "audio/wav".into(), codec: "pcm".into(), bitrate: 0, content_length: None, ext: "wav".into(),
-            expires_at_ms: u64::MAX, source: "teste".into(), source_id: id.into(), segments: vec![], loudness_lufs: None }
+            expires_at_ms: u64::MAX, source: "teste".into(), source_id: id.into(), segments: vec![], loudness_lufs: None, cipher: None }
     }
 
     #[test]

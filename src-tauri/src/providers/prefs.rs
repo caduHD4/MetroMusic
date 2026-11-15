@@ -25,22 +25,6 @@ pub fn set_sc_quality(q: &str) -> bool {
     let changed = *g != n; *g = n; changed
 }
 
-static JIO: Lazy<RwLock<(String, String)>> = Lazy::new(|| RwLock::new(("320".into(), "english".into())));
-/// Qualidade do JioSaavn em kbps (`320` · `160` · `96` · `48`).
-pub fn jio_quality() -> String { JIO.read().0.clone() }
-/// Idioma do início do JioSaavn (letras minúsculas, ex.: `hindi`).
-pub fn jio_language() -> String { JIO.read().1.clone() }
-/// Devolve `true` se a qualidade mudou.
-pub fn set_jio(quality: &str, language: &str) -> bool {
-    let q = match quality { "160" | "96" | "48" => quality, _ => "320" }.to_string();
-    let ok = !language.is_empty() && language.len() <= 20 && language.chars().all(|c| c.is_ascii_lowercase());
-    let mut g = JIO.write();
-    let changed = g.0 != q;
-    g.0 = q;
-    if ok { g.1 = language.to_string(); }
-    changed
-}
-
 pub fn get() -> Prefs { PREFS.read().clone() }
 pub fn hl() -> String { PREFS.read().hl.clone() }
 pub fn gl() -> String { PREFS.read().gl.clone() }
@@ -84,7 +68,5 @@ mod tests {
         set_quality("lixo"); assert_eq!(quality(), "max");
         assert!(set_sc_quality("mp3")); assert!(!set_sc_quality("mp3")); assert_eq!(sc_quality(), "mp3");
         set_sc_quality("lixo"); assert_eq!(sc_quality(), "aac160");
-        assert!(set_jio("96", "hindi")); assert!(!set_jio("96", "../x")); assert_eq!((jio_quality().as_str(), jio_language().as_str()), ("96", "hindi"));
-        set_jio("lixo", "english"); assert_eq!(jio_quality(), "320");
     }
 }

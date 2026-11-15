@@ -28,8 +28,8 @@ export const soon = (...items: Item[]): Item[] => items.map((i) => ({ ...i, soon
 const custom = (id: string): Item => ({ t: "custom", id });
 const link = (label: string, to: string, desc?: string): Item => ({ t: "link", label, to, desc });
 
-export const AUDIO_PROVIDERS: Record<string, string> = { deezer: "Deezer", tidal: "TIDAL", qobuz: "Qobuz", youtube: "YouTube Music", soundcloud: "SoundCloud", jiosaavn: "JioSaavn", offline: "Arquivos locais e downloads" };
-export const LYRICS_PROVIDERS: Record<string, string> = { better: "Better Lyrics (sílaba a sílaba)", apple: "Apple Music (Paxsenix)", lrclib: "LrcLib", musixmatch: "Musixmatch", deezer: "Deezer", spotify: "Spotify", qq: "QQ Music", kugou: "KuGou", bini: "BiniLyrics", plus: "LyricsPlus", youtube: "YouTube Music (não sincronizada)" };
+export const AUDIO_PROVIDERS: Record<string, string> = { deezer: "Deezer", qobuz: "Qobuz", youtube: "YouTube Music", soundcloud: "SoundCloud", offline: "Arquivos locais e downloads" };
+export const LYRICS_PROVIDERS: Record<string, string> = { better: "Better Lyrics (sílaba a sílaba)", lrclib: "LrcLib", spotify: "Spotify", kugou: "KuGou", apple: "Apple Music (Paxsenix)", musixmatch: "Musixmatch", qq: "QQ Music", plus: "LyricsPlus", bini: "BiniLyrics", deezer: "Deezer", ytsub: "YouTube Legenda (transcrição)", youtube: "YouTube Music (não sincronizada)" };
 export const PALETTES: [string, string, number, number][] = [
   ["dynamic", "Dinâmica", -1, 1], ["crimson", "Carmesim", 20, 1], ["rose", "Rosa", 0, 1], ["purple", "Roxo", 320, 1], ["deep_purple", "Violeta", 295, 1],
   ["indigo", "Índigo", 275, 1], ["blue", "Azul", 255, 1], ["sky", "Azul-céu", 235, 1], ["cyan", "Ciano", 205, 1], ["teal", "Verde-azulado", 185, 1],
@@ -37,7 +37,7 @@ export const PALETTES: [string, string, number, number][] = [
   ["orange", "Laranja", 60, 1], ["deep_orange", "Laranja-escuro", 40, 1], ["brown", "Marrom", 55, 0.4], ["grey", "Cinza", 260, 0], ["blue_grey", "Cinza-azulado", 240, 0.3],
 ];
 /** Serviços cujo áudio completo é protegido: sem suporte por decisão do projeto (ver docs/BACKEND.md). */
-export const UNAVAILABLE_PROVIDERS = ["deezer", "tidal", "qobuz"];
+export const UNAVAILABLE_PROVIDERS = ["qobuz"];
 const PROTECTED = "O áudio completo deste serviço é protegido e o MetroMusic ainda não tem suporte a ele. Os controles abaixo estão desativados e não têm efeito.";
 /** Idiomas da interface: para acrescentar um, crie src/i18n/locales/<código>.json e inclua-o aqui. */
 export const APP_LANGS: Opt[] = [["system", "Padrão do sistema"], ["pt-BR", "Português (Brasil)"], ["en", "English"]];
@@ -180,7 +180,7 @@ export const PAGES: Page[] = [
   { id: "provider_order", title: "Ordem dos provedores", desc: "Em que ordem tentar cada fonte de áudio", group: "Player e conteúdo", sections: [
     { items: [
       note("Arraste para cima os provedores que devem ser tentados primeiro. Desligue um provedor para pulá-lo. Os que exigem conta só entram depois de configurados em Integrações."),
-      { t: "order", k: "providerOrder", def: ["offline", "deezer", "tidal", "qobuz", "youtube", "soundcloud", "jiosaavn"], names: AUDIO_PROVIDERS, offKey: "providerOff" },
+      { t: "order", k: "providerOrder", def: ["offline", "deezer", "qobuz", "youtube", "soundcloud"], names: AUDIO_PROVIDERS, offKey: "providerOff" },
       act("Restaurar a ordem padrão", "Restaurar", "resetProviderOrder"),
     ] },
   ] },
@@ -229,8 +229,9 @@ export const PAGES: Page[] = [
   ] },
   { id: "lyrics_providers", parent: "content", title: "Provedores de letra", desc: "Seleção e prioridade", group: "Player e conteúdo", sections: [
     { items: [
-      note("Arraste para reordenar. Quanto mais alto, maior a prioridade. A letra do YouTube Music entra sozinha quando nenhuma outra fonte responde e normalmente não é sincronizada."),
+      note("Arraste para reordenar. Quanto mais alto, maior a prioridade. Cada fonte tem até 8 s para responder; a primeira que tiver a letra vale. Spotify e Deezer só respondem com a conta conectada, e a letra do YouTube Music normalmente não é sincronizada."),
       { t: "order", k: "lyricsOrder", def: Object.keys(LYRICS_PROVIDERS), names: LYRICS_PROVIDERS, offKey: "lyricsOff" },
+      tg("musixmatchForceLineSynced", "Musixmatch: só linha a linha", false, "Ignora a letra palavra a palavra do Musixmatch, que em algumas faixas fica irregular"),
     ] },
   ] },
   { id: "romanization", parent: "content", title: "Romanização", desc: "Transliteração de letras", group: "Player e conteúdo", sections: [
@@ -318,44 +319,21 @@ export const PAGES: Page[] = [
       tg("spotifyLyrics", "Letras do Spotify", true),
     ] },
   ] },
-  { id: "tidal", parent: "integrations", unavailable: PROTECTED, title: "TIDAL", desc: "Áudio lossless e capas", group: "Contas", sections: [
-    { items: [custom("login:tidal")] },
-    { title: "Reprodução", items: [
-      sel("tidalQuality", "Qualidade", "hires", [["aac", "AAC 320 kbps"], ["flac", "FLAC / 16-bit"], ["hires", "Hi-Res / 24-bit"]]),
-      tg("tidalArtwork", "Capas em alta qualidade", true, "Usa a arte do TIDAL no player quando não houver capa animada"),
-      tg("tidalAnimated", "Capas animadas do TIDAL", true),
-      tx("tidalEndpoints", "Endpoints do resolvedor", "https://exemplo.com", "Uma URL por linha, tentadas em ordem", { multiline: true }),
-    ] },
-  ] },
   { id: "qobuz", parent: "integrations", unavailable: PROTECTED, title: "Qobuz", desc: "Áudio Hi-Res", group: "Contas", sections: [
     { items: [
       tx("qobuzCountry", "País", "BR", "Código de 2 letras usado nas requisições (ex.: US, FR, GB)"),
       tx("qobuzInstances", "Instâncias personalizadas", "https://qobuz.exemplo.com", "Uma URL por linha, tentadas em ordem", { multiline: true }),
     ] },
   ] },
-  { id: "deezer", parent: "integrations", unavailable: PROTECTED, title: "Deezer", desc: "Reprodução principal e letras", group: "Contas", sections: [
+  { id: "deezer", parent: "integrations", title: "Deezer", desc: "Reprodução pela sua conta e letras", group: "Contas", sections: [
     { items: [custom("login:deezer")] },
     { title: "Reprodução", items: [
       sel("deezerQuality", "Qualidade", "flac", [["flac", "FLAC"], ["320", "MP3 320 kbps"], ["128", "MP3 128 kbps"]]),
-      tg("deezerUseAccount", "Tocar pela sua conta", true, "Usa a sua sessão em vez do resolvedor compartilhado e volta ao resolvedor se falhar"),
-      tg("deezerFast", "Carregamento rápido", true, "Agrupa as tentativas de qualidade para começar mais depressa"),
       tg("deezerLyrics", "Letras do Deezer", true, "Sincronizadas palavra a palavra; exige login"),
-      tx("deezerResolver", "URL do resolvedor", "https://…/get_url", "Endpoint compatível com dzmedia"),
-    ] },
-    { title: "Proxy", items: [
-      sel("deezerProxy", "Modo", "direct", [["direct", "Conexão direta"], ["free", "Proxy regional gratuito"], ["custom", "URL personalizada"]]),
-      tx("deezerProxyUrl", "Proxy personalizado", "proxy.exemplo.com:3128"),
-      note("Proxies gratuitos são mantidos pela comunidade e podem cair a qualquer momento.", "warn"),
     ] },
   ] },
   { id: "soundcloud", parent: "integrations", title: "SoundCloud", desc: "Catálogo independente", group: "Contas", sections: [
     { items: [custom("login:soundcloud"), sel("soundcloudQuality", "Qualidade", "aac160", [["mp3", "MP3 128 kbps"], ["aac96", "AAC 96 kbps"], ["aac160", "AAC 160 kbps (alta)"]])] },
-  ] },
-  { id: "jiosaavn", parent: "integrations", title: "JioSaavn", desc: "Sem necessidade de login", group: "Contas", sections: [
-    { items: [
-      sel("jioQuality", "Qualidade", "320", [["320", "Alta (320 kbps)"], ["160", "Média (160 kbps)"], ["96", "Economia de dados (96 kbps)"], ["48", "Mínima (48 kbps)"]]),
-      sel("jioLanguage", "Idioma do início", "english", [["english", "Inglês"], ["hindi", "Hindi"], ["punjabi", "Punjabi"], ["tamil", "Tâmil"]]),
-    ] },
   ] },
   { id: "together_settings", parent: "integrations", title: "Ouvir junto", desc: "Servidor, nome e aprovações", group: "Contas", sections: [
     { title: "Conexão", items: [
@@ -436,7 +414,6 @@ export const NOT_IMPLEMENTED = [
   "downloadQuality",
   // integrações
   "canvasPriority", "canvasDownload", "spotifyHistory", "spotifyHistoryGlobal",
-  "jioQuality", "jioLanguage",
 ];
 for (const p of PAGES) for (const sec of p.sections) for (const it of sec.items) {
   const id = "k" in it ? it.k : it.t === "action" ? it.action : it.t === "custom" ? it.id : "";
@@ -445,5 +422,5 @@ for (const p of PAGES) for (const sec of p.sections) for (const it of sec.items)
 
 /** Equalizador (a tela própria edita estes valores; não aparecem na lista de configurações). */
 const EQ_DEFAULTS = { eqOn: true, eqPreamp: 0, eq31: 0, eq62: 0, eq125: 0, eq250: 0, eq500: 0, eq1k: 0, eq2k: 0, eq4k: 0, eq8k: 0, eq16k: 0 };
-export const DEFAULTS: Record<string, any> = { ...EQ_DEFAULTS, themeMode: "dark", palette: "deep_purple", providerOff: [], lyricsOff: ["qq", "kugou"], alarms: [] };
+export const DEFAULTS: Record<string, any> = { ...EQ_DEFAULTS, themeMode: "dark", palette: "deep_purple", providerOff: [], lyricsOff: [], alarms: [] };
 for (const p of PAGES) for (const s of p.sections) for (const it of s.items) if ("k" in it) DEFAULTS[it.k] = it.def;

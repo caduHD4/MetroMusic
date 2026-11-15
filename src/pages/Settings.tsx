@@ -1,6 +1,7 @@
 import { isTauri } from "../lib/native";
 import { logoutLastfm } from "../lib/lastfm";
 import { logoutSc } from "../lib/soundcloud";
+import { logoutDeezer } from "../lib/deezer";
 import { logoutSp } from "../lib/spotify";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, Reorder } from "motion/react";
@@ -156,7 +157,7 @@ function Integrations() {
   const libAccounts = useLib((s) => s.accounts), discord = useDiscord((s) => s.state);
   // o Discord não tem login: "conectado" é a conexão real com o aplicativo do Discord
   const accounts: Record<string, string | undefined> = { ...libAccounts, discord: discord === "ok" ? "ok" : undefined };
-  const cards: [string, string, string, number, string?][] = [["discord", "Discord", "Mostre o que você ouve no seu perfil", 265, "discord"], ["lastfm", "Last.fm", "Scrobbling e Tocando agora", 10, "lastfm"], ["spotify", "Spotify", "Canvas, início personalizado e histórico", 150, "spotify"], ["tidal", "TIDAL", "Áudio Hi-Res e capas animadas", 220, "tidal"], ["qobuz", "Qobuz", "Áudio Hi-Res por resolvedores", 250], ["deezer", "Deezer", "Reprodução principal em FLAC e letras", 300, "deezer"], ["soundcloud", "SoundCloud", "Catálogo independente", 50, "soundcloud"], ["jiosaavn", "JioSaavn", "Músicas completas sem login", 175], ["together_settings", "Ouvir junto", "Servidor, nome de usuário e aprovações", 120]];
+  const cards: [string, string, string, number, string?][] = [["discord", "Discord", "Mostre o que você ouve no seu perfil", 265, "discord"], ["lastfm", "Last.fm", "Scrobbling e Tocando agora", 10, "lastfm"], ["spotify", "Spotify", "Canvas, início personalizado e histórico", 150, "spotify"], ["qobuz", "Qobuz", "Áudio Hi-Res por resolvedores", 250], ["deezer", "Deezer", "Reprodução principal em FLAC e letras", 300, "deezer"], ["soundcloud", "SoundCloud", "Catálogo independente", 50, "soundcloud"], ["together_settings", "Ouvir junto", "Servidor, nome de usuário e aprovações", 120]];
   return (
     <div className="grid gap-3 p-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(17rem, 1fr))" }}>{cards.map(([id, name, desc, hue, acc]) => (
       <button key={id} onClick={() => nav(`settings/${id}`)} className="flex items-center gap-3.5 p-4 rounded-2xl bg-s2 hover:bg-s3 text-left transition-colors">
@@ -168,12 +169,12 @@ function Integrations() {
 }
 function LoginCard({ service }: { service: string }) {
   const acc = useLib((s) => s.accounts[service]);
-  const name = { discord: "Discord", lastfm: "Last.fm", spotify: "Spotify", tidal: "TIDAL", deezer: "Deezer", soundcloud: "SoundCloud" }[service] ?? service;
+  const name = { discord: "Discord", lastfm: "Last.fm", spotify: "Spotify", deezer: "Deezer", soundcloud: "SoundCloud" }[service] ?? service;
   return (
     <div className="flex items-center gap-4 p-4">
       {isBrand(service) ? <BrandTile id={service} size={44} /> : <div className={cx("size-11 rounded-full grid place-items-center", acc ? "bg-ok/15 text-ok" : "bg-s3 text-t3")}>{acc ? <Check className="size-5" /> : <CircleUser className="size-5" />}</div>}
       <div className="flex-1"><div className="font-medium">{acc ? `Conectado como ${acc}` : `Não conectado ao ${name}`}</div><div className="text-t3 text-[0.84rem]">{acc ? "A sessão fica guardada só neste computador." : "Entre pela web ou cole um token/cookie."}</div></div>
-      {acc ? <Btn variant="outline" onClick={() => { if (service === "lastfm" && isTauri) { logoutLastfm(); return; } if (service === "soundcloud" && isTauri) { logoutSc(); return; } if (service === "spotify" && isTauri) { logoutSp(); return; } useLib.getState().setAccount(service, null); toast(`Desconectado do ${name}`); }}>Sair</Btn> : <Btn variant="primary" onClick={() => openDialog("login", { service })}>Entrar</Btn>}
+      {acc ? <Btn variant="outline" onClick={() => { if (service === "lastfm" && isTauri) { logoutLastfm(); return; } if (service === "soundcloud" && isTauri) { logoutSc(); return; } if (service === "deezer" && isTauri) { logoutDeezer(); return; } if (service === "spotify" && isTauri) { logoutSp(); return; } useLib.getState().setAccount(service, null); toast(`Desconectado do ${name}`); }}>Sair</Btn> : <Btn variant="primary" onClick={() => openDialog("login", { service })}>Entrar</Btn>}
     </div>
   );
 }
@@ -265,7 +266,7 @@ function About() {
       <p className="text-t2 max-w-md mx-auto mt-4">Player de música para desktop, offline e online, feito com Rust e Tauri. Baseado nas ideias do MetroFuse e do Metrolist.</p>
       <div className="flex justify-center gap-2 mt-5 flex-wrap"><Btn variant="ghost" icon={<Scale />} onClick={() => toast("GNU General Public License v3.0")}>Licença GPL-3.0</Btn></div>
       <div className="mt-7 text-left max-w-md mx-auto rounded-xl bg-s2 divide-y divide-line">{[["Baseado em", "MetroFuse · Metrolist · InnerTune · OuterTune"], ["Letras", "Better Lyrics · LrcLib"], ["Interface", "Tauri · React · Tailwind · Motion"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 px-4 py-2.5 text-[0.86rem]"><span className="text-t3">{k}</span><span className="text-right">{v}</span></div>)}</div>
-      <div className="text-t3 text-[0.78rem] mt-5 max-w-md mx-auto">Projeto independente e não oficial, sem vínculo com YouTube, Google, Spotify, TIDAL, Deezer, Qobuz ou SoundCloud.</div>
+      <div className="text-t3 text-[0.78rem] mt-5 max-w-md mx-auto">Projeto independente e não oficial, sem vínculo com YouTube, Google, Spotify, Deezer, Qobuz ou SoundCloud.</div>
     </div>
   );
 }
@@ -285,7 +286,7 @@ function Custom({ id }: { id: string }) {
 // ───────── Renderizador genérico
 function OrderList({ item }: { item: Extract<Item, { t: "order" }> }) {
   const t = useT();
-  const blocked = item.k === "providerOrder" ? UNAVAILABLE_PROVIDERS : item.k === "lyricsOrder" ? ["deezer"] : [];
+  const blocked = item.k === "providerOrder" ? UNAVAILABLE_PROVIDERS : [];
   const saved = useSetting<string[]>(item.k); const off = useSetting<string[]>(item.offKey ?? "__none") ?? [];
   const order = [...saved.filter((i) => item.names[i]), ...Object.keys(item.names).filter((i) => !saved.includes(i))];
   return (

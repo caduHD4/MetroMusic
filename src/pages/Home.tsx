@@ -114,7 +114,7 @@ function Community() {
 }
 
 const A = (ids: { id: string }[], type: Item["type"]): Item[] => ids.map((x) => ({ type, id: x.id }));
-const NEEDS_LOGIN: Partial<Record<SourceId, string>> = { spotify: "spotify", tidal: "tidal", soundcloud: "soundcloud" };
+const NEEDS_LOGIN: Partial<Record<SourceId, string>> = { spotify: "spotify", soundcloud: "soundcloud" };
 
 export default function Home() {
   const source = useUI((s) => s.homeSource), online = useUI((s) => s.online);
@@ -193,9 +193,9 @@ export default function Home() {
     <TrackGrid key="le" title="Últimos episódios" sub="Dos programas que você segue" ids={lib.subscribedPodcasts.flatMap((id) => getPodcast(id)?.episodeIds.slice(0, 2) ?? [])} />,
   ] : [
     ...(source === "deezer" ? [<SpeedDial key="sd" />] : []),
-    <ShelfCards key="a" title={{ tidal: "Feito para você", spotify: "Feito para você", soundcloud: "Em alta no SoundCloud", deezer: "Flow e mixes", jiosaavn: "Em alta agora", qobuz: "", youtube: "", offline: "" }[source]} sub={src.name} items={A(sample(playlists.filter((p) => p.kind === "mix" || p.kind === "editorial"), 8, seed), "playlist")} />,
-    <TrackGrid key="b" title={{ tidal: "Novidades em Hi-Res", spotify: "Tocadas recentemente", soundcloud: "Curtidas recentes", deezer: "Para você hoje", jiosaavn: "Top charts", qobuz: "", youtube: "", offline: "" }[source]} ids={sample(source === "tidal" ? songs.filter((t) => t.tier === "Hi-Res") : songs, 9, seed + 1).map((t) => t.id)} />,
-    <ShelfCards key="c" title={{ tidal: "Álbuns em destaque", spotify: "Seus álbuns mais ouvidos", soundcloud: "Álbuns e EPs", deezer: "Lançamentos", jiosaavn: "Novos lançamentos", qobuz: "", youtube: "", offline: "" }[source]} sub={src.name} items={A(sample(albums, 10, seed + 2), "album")} />,
+    <ShelfCards key="a" title={{ spotify: "Feito para você", soundcloud: "Em alta no SoundCloud", deezer: "Flow e mixes", qobuz: "", youtube: "", offline: "" }[source]} sub={src.name} items={A(sample(playlists.filter((p) => p.kind === "mix" || p.kind === "editorial"), 8, seed), "playlist")} />,
+    <TrackGrid key="b" title={{ spotify: "Tocadas recentemente", soundcloud: "Curtidas recentes", deezer: "Para você hoje", qobuz: "", youtube: "", offline: "" }[source]} ids={sample(songs, 9, seed + 1).map((t) => t.id)} />,
+    <ShelfCards key="c" title={{ spotify: "Seus álbuns mais ouvidos", soundcloud: "Álbuns e EPs", deezer: "Lançamentos", qobuz: "", youtube: "", offline: "" }[source]} sub={src.name} items={A(sample(albums, 10, seed + 2), "album")} />,
     <ShelfCards key="d" title="Playlists editoriais" sub={src.name} items={A(sample(playlists.filter((p) => p.kind === "editorial"), 8, seed + 3), "playlist")} />,
     <ShelfCards key="e" title={source === "soundcloud" ? "Artistas em ascensão" : "Artistas para você"} items={A(sample(artists, 9, seed + 4), "artist")} />,
     <DailyDiscover key="dd" seed={seed} />,

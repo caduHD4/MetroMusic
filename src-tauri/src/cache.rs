@@ -320,8 +320,9 @@ impl Cache {
         let content_range_total = resp.headers().get("content-range").and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('/').next()).and_then(|t| t.parse::<u64>().ok());
         let whole_body = status == 200; // o servidor ignorou o Range e mandou o arquivo todo
         if whole_body && start != 0 { return Err(DlErr::Net("o servidor não aceita Range".into())); }
-        let bytes = resp.bytes().await.map_err(|e| DlErr::Net(e.to_string()))?;
+        let mut bytes = resp.bytes().await.map_err(|e| DlErr::Net(e.to_string()))?.to_vec();
         if bytes.is_empty() { return Err(DlErr::Net("resposta vazia".into())); }
+        if let Some(id) = &stream.cipher { crate::providers::deezer::decrypt_stripe(id, start, &mut bytes).map_err(DlErr::Net)?; }
         self.append(entry, start, &bytes)?;
         let mut s = entry.st.lock();
         s.have = start + bytes.len() as u64;

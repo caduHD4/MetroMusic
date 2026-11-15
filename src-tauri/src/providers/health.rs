@@ -16,13 +16,12 @@ pub struct Health {
 }
 
 /// Endereços leves que provam que o serviço está respondendo.
-const TARGETS: [(&str, &str, &str); 4] = [
+const TARGETS: [(&str, &str, &str); 3] = [
     ("youtube", "https://music.youtube.com/", "InnerTube"),
     ("soundcloud", "https://soundcloud.com/", "Site e HLS"),
     ("deezer", "https://api.deezer.com/infos", "API pública"),
-    ("jiosaavn", "https://www.jiosaavn.com/", "API pública"),
 ];
-const UNSUPPORTED: [&str; 2] = ["tidal", "qobuz"];
+const UNSUPPORTED: [&str; 1] = ["qobuz"];
 
 pub fn classify(status: Option<u16>) -> &'static str {
     match status { Some(200..=299) => "online", Some(_) => "reachable", None => "offline" }

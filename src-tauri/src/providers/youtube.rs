@@ -275,7 +275,7 @@ async fn attempt(c: &'static Client, video_id: &str, expected_ms: Option<u64>, v
     if expires <= now + 45_000 { return Err(format!("{}: URL expira cedo demais", c.key)); }
     Ok(StreamInfo {
         url: f.url, mime: f.mime, codec: f.codec, bitrate: f.bitrate, content_length: f.content_length, ext: "m4a".into(),
-        expires_at_ms: expires, source: "youtube".into(), source_id: video_id.to_string(), segments: vec![],
+        expires_at_ms: expires, source: "youtube".into(), source_id: video_id.to_string(), segments: vec![], cipher: None,
         // Mesma regra do MetroFuse: o loudness "perceptual" se houver; senão `loudnessDb` mais o deslocamento de −7 LUFS.
         loudness_lufs: at(&player, "playerConfig.audioConfig.perceptualLoudnessDb").and_then(|v| v.as_f64())
             .or_else(|| at(&player, "playerConfig.audioConfig.loudnessDb").and_then(|v| v.as_f64()).map(|d| d - 7.0)),
@@ -308,6 +308,28 @@ pub async fn resolve(video_id: &str, expected_ms: Option<u64>) -> Res<StreamInfo
         }
     }
     Err(format!("YouTube Music: nenhum stream para {video_id} ({})", failures.join("; ")))
+}
+
+/// Faixas de legenda do vídeo, vindas do `player` dos mesmos clientes que tocam o áudio (o `get_transcript` do site
+/// passou a exigir token de atestação). Devolve `(idioma, é automática, URL, User-Agent do cliente)`; o primeiro
+/// cliente que trouxer legendas vence.
+pub async fn caption_tracks(video_id: &str) -> Res<Vec<(String, bool, String, &'static str)>> {
+    let visitor = visitor_data().await;
+    let one = |c: &'static Client| {
+        let visitor = visitor.clone();
+        async move {
+            let body = json!({ "context": context(c, &visitor), "videoId": video_id, "playlistId": null, "contentCheckOk": true, "racyCheckOk": true });
+            let player = post("player", c, &visitor, body, false).await?;
+            let tracks: Vec<_> = at(&player, "captions.playerCaptionsTracklistRenderer.captionTracks").and_then(|t| t.as_array()).map(|t| t.iter().filter_map(|x| {
+                let url = x.get("baseUrl")?.as_str()?.to_string();
+                Some((x.get("languageCode").and_then(|l| l.as_str()).unwrap_or("").to_string(), x.get("kind").and_then(|k| k.as_str()) == Some("asr"), url, c.ua))
+            }).collect()).unwrap_or_default();
+            if tracks.is_empty() { Err(format!("{}: sem legendas", c.key)) } else { Ok(tracks) }
+        }
+    };
+    let mut race: FuturesUnordered<_> = PLAYBACK_CLIENTS.iter().map(one).collect();
+    while let Some(r) = race.next().await { if let Ok(t) = r { return Ok(t); } }
+    Err("o vídeo não tem legendas disponíveis".into())
 }
 
 pub fn invalidate(video_id: &str) { STREAMS.lock().retain(|k, _| k.split('|').next() != Some(video_id)); }

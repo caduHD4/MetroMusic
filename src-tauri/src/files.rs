@@ -26,6 +26,21 @@ pub fn write_text(path: &Path, text: &str) -> Res<()> {
 #[tauri::command]
 pub fn file_read_text(path: String) -> Res<String> { read_text(Path::new(&path)) }
 
+/// Grava bytes (a imagem da letra) no caminho escolhido no seletor, vindos em base64.
+pub fn write_base64(path: &Path, b64: &str) -> Res<()> {
+    use base64::Engine;
+    if path.as_os_str().is_empty() { return Err("caminho vazio".into()); }
+    if path.is_dir() { return Err("o destino é uma pasta".into()); }
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| "dados da imagem inválidos".to_string())?;
+    if bytes.len() as u64 > MAX_READ { return Err("o arquivo é grande demais".into()); }
+    let tmp = path.with_extension("part");
+    std::fs::write(&tmp, bytes).map_err(|e| format!("não consegui gravar o arquivo: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| { let _ = std::fs::remove_file(&tmp); format!("não consegui concluir a gravação: {e}") })
+}
+
+#[tauri::command]
+pub fn file_write_base64(path: String, data: String) -> Res<()> { write_base64(Path::new(&path), &data) }
+
 #[tauri::command]
 pub fn file_write_text(path: String, text: String) -> Res<()> { write_text(Path::new(&path), &text) }
 
@@ -38,6 +53,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn grava_base64() {
+        let d = dir("b64");
+        let f = d.join("a.png");
+        write_base64(&f, "iVBORw==").unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), vec![0x89, b'P', b'N', b'G']);
+        assert!(write_base64(&f, "***").is_err());
     }
 
     #[test]

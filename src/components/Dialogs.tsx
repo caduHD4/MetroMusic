@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import { AudioLines, Cast, Check, Copy, Mail, MessageCircle, Users, Download, FileSpreadsheet, FileText, Link, ListMusic, LogIn, Minus, Monitor, Plus, QrCode, Search, Send, Speaker, Tv, Upload } from "lucide-react";
-import { albumOf, artistOf, getArtist, getLyrics, getTrack, registerTrack, sample, songs, SOURCES, sourceName, type ExtInfo, type SourceId } from "../lib/catalog";
+import { albumOf, artistOf, getArtist, getLyrics, getTrack, registerTrack, sample, songs, SOURCES, sourceName, type ExtInfo, type Lyrics, type SourceId } from "../lib/catalog";
 import { guessColumns, parseCsv, parseM3u, rowsToItems, type ImportItem } from "../lib/importers";
 import { parseMusicLink } from "../lib/links";
 import { localExt } from "../lib/local";
@@ -15,8 +15,9 @@ import { createAccountPlaylist, notifyRemoteChanged } from "../lib/accountPlayli
 import { engine, type SourceCandidate } from "../lib/engine";
 import { loginLastfm, useLastfm } from "../lib/lastfm";
 import { cancelScLogin, loginScToken, loginScWeb, useSc } from "../lib/soundcloud";
+import { cancelDeezerLogin, loginDeezerToken, loginDeezerWeb, useDz } from "../lib/deezer";
 import { cancelSpLogin, loginSp, loginSpCookie, useSp } from "../lib/spotify";
-import { invoke, isTauri, onEvent, pickOpenFile, toggleMiniWindow } from "../lib/native";
+import { invoke, isTauri, onEvent, pickOpenFile, pickSaveFile, toggleMiniWindow } from "../lib/native";
 import { getSetting, setSetting, useSetting } from "../store/settings";
 import { nav, openDialog, toast, useUI } from "../store/ui";
 import { useDiscord } from "../lib/discord";
@@ -25,7 +26,9 @@ import { linkOf, openExternal, playlistAsText } from "../lib/share";
 import { mailUrl, shareText, telegramUrl, universalUrl, whatsappUrl } from "../lib/shareLinks";
 import { useLT } from "../lib/lt/session";
 import { fmtBytes, parseNotes } from "../lib/releaseNotes";
-import { useLyr } from "./Lyrics";
+import { refreshLyrics, useLyr } from "./Lyrics";
+import { applyLyrics, lyricsOrder } from "../lib/lyricsStore";
+import { blobToBase64, parseLrc, renderLyricsImage, toLrc, type ImageStyle } from "../lib/lyricsTools";
 import { ConfirmFooter } from "./overlays";
 import { Badge, Btn, Checkbox, Cover, IconBtn, Kbd, Modal, Range, Select, Spinner, Switch, TextField } from "./ui";
 
@@ -441,7 +444,6 @@ function Shortcuts({ close }: P) {
 const SERVICES: Record<string, { name: string; hue: number; token: string; hint: string }> = {
   youtube: { name: "YouTube Music", hue: 25, token: "Token de login", hint: "Método avançado: em vez do portal web, cole o token de login diretamente." },
   spotify: { name: "Spotify", hue: 150, token: "Cookies / sp_dc + sp_t", hint: "Cole o cabeçalho de cookies completo para o início personalizado. O Canvas funciona só com sp_dc." },
-  tidal: { name: "TIDAL", hue: 220, token: "Cookies ou token", hint: "Cole o cabeçalho de cookies, um refresh token ou um access token." },
   deezer: { name: "Deezer", hue: 300, token: "Cookie (arl)", hint: "Cole o valor de arl, sid ou um cabeçalho de cookies do Deezer." },
   soundcloud: { name: "SoundCloud", hue: 50, token: "Token OAuth", hint: "Cole o oauth_token da sua sessão no navegador." },
   lastfm: { name: "Last.fm", hue: 10, token: "Senha", hint: "" },
@@ -486,6 +488,25 @@ function SpLogin({ close }: P) {
       </>)}
       {error && <p className="mt-4 text-[0.86rem] text-danger text-center">{error}</p>}
       <p className="text-t3 text-[0.8rem] mt-4 text-center">As músicas tocam pelo YouTube Music ou SoundCloud: o áudio do Spotify é protegido. O login usa um método não oficial e pode parar de funcionar se o Spotify mudar.</p>
+    </Modal>
+  );
+}
+function DzLogin({ close }: P) {
+  const { status, error, info } = useDz();
+  const [mode, setMode] = useState<"web" | "token">("web"); const [token, setToken] = useState("");
+  useEffect(() => { if (info) close(); }, [info]); // eslint-disable-line react-hooks/exhaustive-deps
+  const busy = status !== "idle";
+  return (
+    <Modal title="Entrar no Deezer" width={460} onClose={() => { if (status === "waiting") cancelDeezerLogin(); close(); }}>
+      <div className="flex justify-center mb-5"><BrandTile id="deezer" size={64} className="rounded-2xl" /></div>
+      <div className="flex justify-center mb-5"><div className="inline-flex p-1 rounded-full bg-s2">{(["web", "token"] as const).map((m) => <button key={m} onClick={() => !busy && setMode(m)} className={cx("h-8 px-4 rounded-full text-[0.86rem] font-medium", mode === m ? "bg-accent text-accent-fg" : "text-t2")}>{m === "web" ? "Login na web" : "Colar arl"}</button>)}</div></div>
+      {status === "waiting" ? (
+        <div className="grid place-items-center gap-3 text-t2 py-4 text-center"><Spinner className="size-7" /><div>Termine o login na janela do Deezer que abriu.<br /><span className="text-t3 text-[0.86rem]">Ela fecha sozinha quando a conta for reconhecida.</span></div><Btn variant="ghost" onClick={cancelDeezerLogin}>Cancelar</Btn></div>
+      ) : status === "checking" ? <div className="grid place-items-center h-36 gap-3 text-t2"><Spinner className="size-7" />Verificando a sessão…</div>
+      : mode === "web" ? (<><p className="text-t2 text-center mb-5">Uma janela do Deezer vai abrir para você entrar. O MetroMusic guarda só a sessão, neste computador, e não a senha.</p><Btn variant="primary" className="w-full" icon={<LogIn />} onClick={loginDeezerWeb}>Continuar na web</Btn></>)
+      : (<><Field label="Cookie arl" hint="Em deezer.com já logado, abra o F12 › Aplicativo › Cookies e copie o valor do cookie arl."><TextField multiline value={token} onChange={setToken} placeholder="Cole o valor do arl" /></Field><Btn variant="primary" className="w-full" disabled={!token.trim()} onClick={() => loginDeezerToken(token)}>Salvar e conectar</Btn></>)}
+      {error && <p className="mt-4 text-[0.86rem] text-danger text-center">{error}</p>}
+      <p className="text-t3 text-[0.8rem] mt-4 text-center">Contas gratuitas tocam em MP3 128 kbps; FLAC e MP3 320 exigem assinatura. Se o Deezer não liberar a faixa, o MetroMusic toca a mesma música em outro provedor.</p>
     </Modal>
   );
 }
@@ -559,6 +580,7 @@ function Login(p: P) {
   if (p.props.service === "youtube" && isTauri) return <YtLogin {...p} />;
   if (p.props.service === "lastfm" && isTauri) return <LastfmLogin {...p} />;
   if (p.props.service === "soundcloud" && isTauri) return <ScLogin {...p} />;
+  if (p.props.service === "deezer" && isTauri) return <DzLogin {...p} />;
   if (p.props.service === "spotify" && isTauri) return <SpLogin {...p} />;
   return <LoginMock {...p} />;
 }
@@ -582,22 +604,52 @@ function Logout({ close }: P) {
   return <Modal title="Manter os dados da biblioteca?" width={440} onClose={close} footer={<><Btn variant="ghost" onClick={close}>Cancelar</Btn><Btn variant="danger" onClick={() => out(true)}>Limpar</Btn><Btn variant="primary" onClick={() => out(false)}>Manter</Btn></>}><p className="text-t2 leading-relaxed">Quer manter as playlists e os dados da biblioteca neste computador? As músicas baixadas sempre ficam.</p></Modal>;
 }
 
+type LyricCandidate = Lyrics & { wordSync?: boolean };
+const syncLabel = (c: LyricCandidate) => (c.wordSync ? "Palavra a palavra" : c.synced ? "Linha a linha" : "Sem sincronia");
+
 function LyricsSearch({ props, close }: P) {
   const t = getTrack(props.id)!;
-  const [title, setTitle] = useState(t.title); const [artist, setArtist] = useState(artistOf(t)); const [state, setState] = useState<"form" | "loading" | "results">("form");
-  const results = ["BetterLyrics", "Apple Music", "LrcLib", "Musixmatch", "Deezer"].map((p, i) => ({ p, sync: ["Sílaba a sílaba", "Palavra a palavra", "Linha a linha", "Linha a linha", "Palavra a palavra"][i], dur: fmtTime(t.duration + [0, 0, 1, -2, 0][i]) }));
+  const [title, setTitle] = useState(t.title); const [artist, setArtist] = useState(artistOf(t));
+  const [state, setState] = useState<"form" | "loading" | "results">("form");
+  const [results, setResults] = useState<LyricCandidate[]>([]); const [error, setError] = useState<string | null>(null);
+  const search = async () => {
+    if (!t.ext) { setError("Só dá para buscar letras de faixas de uma fonte real (YouTube Music, Spotify, SoundCloud, Deezer ou arquivos)."); return; }
+    setError(null); setState("loading");
+    try {
+      const r = await engine.lyricsSearch(t.ext, title, artist, lyricsOrder(true));
+      setResults((r ?? []) as LyricCandidate[]); setState("results");
+    } catch (e) { setError(`A busca falhou: ${String(e)}`); setState("form"); }
+  };
+  const use = (c: LyricCandidate) => { useLyr.getState().clearTranslation(t.id); applyLyrics(t, { synced: c.synced, provider: c.provider, lines: c.lines }); close(); toast(`Letra de ${c.provider} aplicada`); };
   return (
-    <Modal title="Buscar letra" width={480} onClose={close} footer={state === "form" ? <><Btn variant="ghost" onClick={() => toast("Abrindo a busca no navegador…")}>Buscar na web</Btn><div className="flex-1" /><Btn variant="primary" icon={<Search />} onClick={() => { setState("loading"); setTimeout(() => setState("results"), 900); }}>Buscar</Btn></> : undefined}>
-      {state === "form" && <><Field label="Título"><TextField autoFocus value={title} onChange={setTitle} /></Field><Field label="Artistas"><TextField value={artist} onChange={setArtist} /></Field></>}
-      {state === "loading" && <div className="grid place-items-center h-40 text-t3"><Spinner className="size-6" /></div>}
-      {state === "results" && results.map((r) => <button key={r.p} onClick={() => { close(); toast(`Letra de ${r.p} aplicada`); }} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-s2 text-left"><div className="flex-1"><div className="font-medium">{r.p}</div><div className="text-t3 text-[0.82rem]">{r.sync} · {r.dur}</div></div><Btn size="sm">Usar</Btn></button>)}
+    <Modal title="Buscar letra" width={500} onClose={close} footer={state !== "loading" ? <>
+      <Btn variant="ghost" onClick={() => void openExternal(`https://www.google.com/search?q=${encodeURIComponent(`${title} ${artist} letra`)}`)}>Buscar na web</Btn><div className="flex-1" />
+      {state === "results" && <Btn variant="ghost" onClick={() => setState("form")}>Mudar a busca</Btn>}
+      <Btn variant="primary" icon={<Search />} onClick={() => void search()}>{state === "results" ? "Buscar de novo" : "Buscar"}</Btn></> : undefined}>
+      {state === "form" && <><Field label="Título"><TextField autoFocus value={title} onChange={setTitle} /></Field><Field label="Artistas" hint="Separe vários artistas com vírgula">{<TextField value={artist} onChange={setArtist} />}</Field>
+        {error && <div className="text-danger text-[0.86rem] leading-snug">{error}</div>}</>}
+      {state === "loading" && <div className="grid place-items-center h-40 gap-3 text-t3"><Spinner className="size-6" /><span className="text-[0.86rem]">Consultando os provedores…</span></div>}
+      {state === "results" && (results.length === 0
+        ? <div className="text-t2 text-center py-8 leading-relaxed">Nenhum provedor achou a letra de “{title}”.<br /><span className="text-t3 text-[0.86rem]">Tente ajustar o título ou o artista, ou escreva a letra pelo menu.</span></div>
+        : results.map((r) => (
+          <button key={r.provider} onClick={() => use(r)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-s2 text-left">
+            <div className="flex-1 min-w-0"><div className="font-medium">{r.provider}</div><div className="text-t3 text-[0.82rem]">{syncLabel(r)} · {r.lines.length} linhas</div>
+              <div className="text-t2 text-[0.84rem] truncate mt-0.5">{r.lines.find((l) => l.text)?.text}</div></div><Btn size="sm">Usar</Btn>
+          </button>)))}
     </Modal>
   );
 }
 function LyricsEdit({ props, close }: P) {
   const t = getTrack(props.id)!; const ly = getLyrics(t);
-  const [text, setText] = useState(ly?.lines.map((l) => `[${fmtTime(l.t).padStart(5, "0")}.00] ${l.text}`).join("\n") ?? "");
-  return <Modal title="Editar letra" subtitle="Formato LRC: [mm:ss.xx] texto da linha" width={620} onClose={close} footer={<ConfirmFooter onCancel={close} onConfirm={() => { close(); toast("Letra salva (simulado)"); }} confirm="Salvar" />}><textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className="w-full h-[46vh] rounded-xl bg-s2 p-4 font-mono text-[0.84rem] leading-relaxed resize-none focus:bg-bg border border-transparent focus:border-accent/50" /></Modal>;
+  const [text, setText] = useState(ly ? toLrc(ly) : "");
+  const save = () => {
+    const l = parseLrc(text, "Editada por você");
+    if (!l) { toast("Escreva ao menos uma linha de letra"); return; }
+    useLyr.getState().clearTranslation(t.id); applyLyrics(t, l); close(); toast(l.synced ? "Letra salva" : "Letra salva (sem sincronia: use [mm:ss.xx] antes das linhas para sincronizar)");
+  };
+  return <Modal title="Editar letra" subtitle="Formato LRC: [mm:ss.xx] texto da linha. Sem tempos, a letra fica sem sincronia." width={620} onClose={close}
+    footer={<>{t.ext && <Btn variant="ghost" onClick={() => { close(); refreshLyrics(t); }}>Voltar à letra original</Btn>}<div className="flex-1" /><ConfirmFooter onCancel={close} onConfirm={save} confirm="Salvar" /></>}>
+    <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} autoFocus className="w-full h-[46vh] rounded-xl bg-s2 p-4 font-mono text-[0.84rem] leading-relaxed resize-none focus:bg-bg border border-transparent focus:border-accent/50" /></Modal>;
 }
 function LyricsOffset({ props, close }: P) {
   const off = useLyr((s) => s.offset[props.id] ?? 0);
@@ -616,9 +668,28 @@ function LyricsImage({ props, close }: P) {
   const start = Math.max(0, (ly?.lines.findIndex((l) => l.end > pos) ?? 0));
   const [from, setFrom] = useState(start); const [n, setN] = useState(3); const [style, setStyle] = useState("cover"); const [busy, setBusy] = useState(false);
   const lines = ly?.lines.slice(from, from + n) ?? [];
+  const make = async (mode: "copy" | "save") => {
+    setBusy(true);
+    try {
+      const blob = await renderLyricsImage({ title: t.title, artist: artistOf(t), art: t.art, hue: t.hue, lines: lines.map((l) => l.text), style: style as ImageStyle });
+      if (mode === "copy") {
+        if (!navigator.clipboard?.write) throw new Error("este sistema não deixa copiar imagens");
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        close(); toast("Imagem copiada");
+      } else if (isTauri) {
+        const path = await pickSaveFile(`${t.title} - letra.png`, [{ name: "Imagem PNG", extensions: ["png"] }]);
+        if (!path) { setBusy(false); return; }
+        await invoke("file_write_base64", { path, data: await blobToBase64(blob) });
+        close(); toast("Imagem salva");
+      } else {
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${t.title} - letra.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        close(); toast("Imagem salva");
+      }
+    } catch (e) { toast(`Não consegui gerar a imagem: ${e instanceof Error ? e.message : String(e)}`); setBusy(false); }
+  };
   const bg = style === "cover" ? coverBg(t.hue, t.seed) : style === "dark" ? "oklch(0.18 0.02 280)" : `linear-gradient(140deg, oklch(0.6 0.17 ${t.hue}), oklch(0.35 0.13 ${(t.hue + 50) % 360}))`;
   return (
-    <Modal title="Compartilhar letra como imagem" width={560} onClose={close} footer={<><Btn variant="ghost" icon={<Copy />} onClick={() => { close(); toast("Imagem copiada"); }}>Copiar</Btn><Btn variant="primary" icon={busy ? <Spinner /> : <Download />} disabled={busy} onClick={() => { setBusy(true); setTimeout(() => { close(); toast("Imagem salva em Imagens"); }, 900); }}>{busy ? "Gerando imagem…" : "Salvar imagem"}</Btn></>}>
+    <Modal title="Compartilhar letra como imagem" width={560} onClose={close} footer={<><Btn variant="ghost" icon={<Copy />} disabled={busy || !lines.length} onClick={() => void make("copy")}>Copiar</Btn><Btn variant="primary" icon={busy ? <Spinner /> : <Download />} disabled={busy || !lines.length} onClick={() => void make("save")}>{busy ? "Gerando imagem…" : "Salvar imagem"}</Btn></>}>
       <div className="flex gap-5">
         <div className="relative w-64 aspect-[4/5] rounded-2xl overflow-hidden shrink-0 p-5 flex flex-col text-white" style={{ background: bg }}>
           {style === "cover" && <div className="absolute inset-0 bg-black/45 backdrop-blur-xl" />}

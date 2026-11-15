@@ -8,7 +8,7 @@ import { registerSections, RemoteSections } from "../components/remote";
 import { Btn, Empty, IconBtn, Spinner } from "../components/ui";
 import { openDialog } from "../store/ui";
 
-/** Fontes com início real no backend. As outras (TIDAL, Qobuz, JioSaavn, Offline) ainda não têm backend. */
+/** Fontes com início real no backend. As outras (Qobuz, Offline) ainda não têm backend. */
 const REAL: SourceId[] = ["soundcloud", "deezer", "spotify"];
 const cache = new Map<string, { at: number; sections: RSection[] }>();
 const TTL = 5 * 60 * 1000;

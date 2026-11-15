@@ -10,13 +10,14 @@ import { copyText, cx } from "../lib/util";
 import { usePlayer } from "../store/player";
 import { nav, openDialog, toast, useUI, type MenuItem } from "../store/ui";
 import { useActiveLine, useSmoothTime } from "../lib/clock";
-import { useRealLyrics } from "../lib/lyricsStore";
+import { ensureLyrics, useRealLyrics } from "../lib/lyricsStore";
+import { loadOffsets, saveOffsets } from "../lib/lyricsTools";
 import { Btn, Empty, IconBtn, Spinner } from "./ui";
 
 interface LyrPrefs { offset: Record<string, number>; translated: Record<string, "loading" | "done">; translations: Record<string, string[]>; setOffset: (id: string, v: number) => void; translate: (id: string) => void; clearTranslation: (id: string) => void }
 export const useLyr = create<LyrPrefs>((set) => ({
-  offset: {}, translated: {}, translations: {},
-  setOffset: (id, v) => set((s) => ({ offset: { ...s.offset, [id]: v } })),
+  offset: loadOffsets(), translated: {}, translations: {},
+  setOffset: (id, v) => set((s) => { const offset = { ...s.offset }; if (v === 0) delete offset[id]; else offset[id] = v; saveOffsets(offset); return { offset }; }),
   translate: (id) => {
     const track = getTrack(id); const lines = (track && getLyrics(track)?.lines.map((l) => l.text)) ?? [];
     if (!lines.length) return void toast("Esta faixa não tem letra para traduzir");
@@ -34,13 +35,21 @@ export const useLyr = create<LyrPrefs>((set) => ({
   clearTranslation: (id) => set((s) => { const t = { ...s.translated }, tr = { ...s.translations }; delete t[id]; delete tr[id]; return { translated: t, translations: tr }; }),
 }));
 
+/** Menu › "Buscar de novo": ignora o cache e pergunta de novo a todos os provedores ligados. */
+export function refreshLyrics(t: Track) {
+  if (!t.ext) return void toast("Esta faixa não tem fonte de letra para consultar");
+  toast("Buscando a letra…");
+  useLyr.getState().clearTranslation(t.id);
+  void ensureLyrics(t, true).then((ok) => toast(ok ? "Letra atualizada" : "Nenhum provedor tem a letra desta faixa"));
+}
+
 export function lyricsMenu(t: Track): MenuItem[] {
   const ly = getLyrics(t); const L = useLyr.getState(); const text = ly?.lines.map((l) => l.text).join("\n") ?? "";
   const tr = L.translated[t.id];
   return [
     { label: "Buscar outra letra…", icon: <Search />, onClick: () => openDialog("lyricsSearch", { id: t.id }) },
     { label: "Editar letra…", icon: <Pencil />, onClick: () => openDialog("lyricsEdit", { id: t.id }) },
-    { label: "Buscar de novo", icon: <RefreshCw />, onClick: () => toast("Letra atualizada") },
+    { label: "Buscar de novo", icon: <RefreshCw />, onClick: () => refreshLyrics(t) },
     { divider: true },
     { label: tr === "done" ? "Remover tradução" : "Traduzir com IA", icon: <Languages />, disabled: !ly, onClick: () => (tr === "done" ? L.clearTranslation(t.id) : L.translate(t.id)) },
     { label: "Configurar romanização…", icon: <Type />, onClick: () => nav("settings/romanization") },

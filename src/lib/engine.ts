@@ -12,6 +12,7 @@ export interface RCollection { kind: "album" | "playlist" | "artist" | "mix"; id
 export interface YtAccountInfo { name: string; email?: string | null; handle?: string | null; avatar?: string | null }
 export interface SpStatus { hasClientId: boolean; loggedIn: boolean; redirect: string }
 export interface SpAccountInfo { id: string; name: string; handle?: string | null; avatar?: string | null }
+export interface DzAccountInfo { id: number; name: string; avatar?: string | null; premium: boolean }
 export interface ScAccountInfo { id: number; name: string; handle?: string | null; avatar?: string | null }
 export interface LocalTrack { path: string; title: string; artists: string[]; album?: string | null; durationMs?: number | null; trackNo?: number | null; cover?: string | null; bitrate?: number | null }
 export interface ScanResult { tracks: LocalTrack[]; unsupported: number; unreadable: number; tooShort: number }
@@ -25,12 +26,13 @@ export interface RChip { title: string; browseId: string; params?: string | null
 export interface RHome { chips: RChip[]; sections: RSection[]; continuation?: string | null; personalized: boolean }
 export interface RPage { kind: string; id: string; title: string; subtitle: string; description?: string | null; artwork?: string | null; tracks: ExtInfo[]; sections: RSection[]; items: RItem[]; editable?: boolean; audioPlaylistId?: string | null; continuation?: string | null }
 
-/** Provedores que tocam músicas inteiras, na ordem em que o app tenta achar a mesma faixa (para o Deezer). */
+/** Provedores que tocam músicas inteiras, na ordem de preferência quando uma faixa precisa de outra fonte
+ *  (o Deezer só conta se a conta estiver conectada: o backend ignora o que não toca). */
 export function playbackOrder(): string[] {
   const saved: string[] = getSetting("providerOrder") ?? [];
   const off: string[] = getSetting("providerOff") ?? [];
-  const order = saved.filter((p) => (p === "youtube" || p === "soundcloud") && !off.includes(p));
-  return order.length ? order : ["youtube", "soundcloud"].filter((p) => !off.includes(p));
+  const order = saved.filter((p) => (p === "youtube" || p === "soundcloud" || p === "deezer") && !off.includes(p));
+  return order.length ? order : ["youtube", "soundcloud", "deezer"].filter((p) => !off.includes(p));
 }
 
 export const SEARCHABLE = ["youtube", "soundcloud", "deezer", "spotify"];
@@ -59,7 +61,8 @@ export const engine = {
   imageStats: () => invoke<{ bytes: number; files: number }>("image_cache_stats"),
   imageClear: () => invoke<number>("image_cache_clear"),
   importMatch: (items: { title: string; artist: string; durationSec?: number }[]) => invoke<(ExtInfo | null)[]>("import_match", { items, order: playbackOrder() }),
-  lyrics: (track: ExtInfo, order: string[]) => invoke<unknown>("lyrics_get", { track, order }),
+  lyrics: (track: ExtInfo, order: string[], force = false) => invoke<unknown>("lyrics_get", { track, order, force }),
+  lyricsSearch: (track: ExtInfo, title: string, artist: string, order: string[]) => invoke<unknown[]>("lyrics_search", { track, title, artist, order }),
   ytLoginStart: () => invoke("yt_login_start"),
   ytLoginCancel: () => invoke("yt_login_cancel"),
   ytLoginCookie: (cookie: string) => invoke<YtAccountInfo>("yt_login_cookie", { cookie }),
@@ -74,6 +77,11 @@ export const engine = {
   scLoginToken: (token: string) => invoke<ScAccountInfo>("sc_login_token", { token }),
   scAccount: () => invoke<ScAccountInfo | null>("sc_account"),
   scLogout: () => invoke("sc_logout"),
+  deezerLoginStart: () => invoke("deezer_login_start"),
+  deezerLoginCancel: () => invoke("deezer_login_cancel"),
+  deezerLoginToken: (token: string) => invoke<DzAccountInfo>("deezer_login_token", { token }),
+  deezerAccount: () => invoke<DzAccountInfo | null>("deezer_account"),
+  deezerLogout: () => invoke("deezer_logout"),
   scLibrary: (kind: "songs" | "playlists" | "history") => invoke<RPage>("sc_library", { kind }),
   scPlaylist: (id: string) => invoke<RPage>("sc_playlist", { id }),
   scRate: (trackId: string, like: boolean) => invoke("sc_rate", { trackId, like }),
