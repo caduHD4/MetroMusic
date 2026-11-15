@@ -83,7 +83,14 @@ pub fn read_frame(r: &mut impl Read) -> Res<(u32, Value)> {
     Ok((op, serde_json::from_slice(&body).unwrap_or(Value::Null)))
 }
 
+/// Windows: o Discord expõe named pipes (`\\.\pipe\discord-ipc-N`), que não aparecem em pastas.
+#[cfg(windows)]
+pub fn socket_candidates() -> Vec<PathBuf> {
+    (0..10).map(|n| PathBuf::from(format!(r"\\.\pipe\discord-ipc-{n}"))).collect()
+}
+
 /// Onde o Discord (ou Flatpak/Snap) deixa o socket, em ordem de preferência.
+#[cfg(not(windows))]
 pub fn socket_candidates() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = vec![];
     for var in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] { if let Ok(d) = std::env::var(var) { dirs.push(d.into()); } }
@@ -154,7 +161,8 @@ static CONN: Lazy<Mutex<Option<Conn>>> = Lazy::new(|| Mutex::new(None));
 fn connect(app_id: &str) -> Res<Conn> {
     let mut last = "não achei o Discord aberto".to_string();
     for p in socket_candidates() {
-        if !p.exists() { continue; }
+        // no Windows os pipes não passam em `exists()`; basta tentar abrir (falha rápida se não houver Discord)
+        if cfg!(unix) && !p.exists() { continue; }
         match Conn::open(&p, app_id) { Ok(c) => return Ok(c), Err(e) => last = e }
     }
     Err(last)

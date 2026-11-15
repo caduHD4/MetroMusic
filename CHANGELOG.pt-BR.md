@@ -4,6 +4,13 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.10
+
+Correção do Discord no Windows.
+
+### Discord
+- **A presença no Discord agora encontra o Discord no Windows.** O app procurava o arquivo de socket do Linux, mas no Windows o Discord usa um named pipe (`\.\pipe\discord-ipc-N`), então sempre dizia "não achei o Discord aberto". Agora ele conecta ao pipe.
+
 ## 0.1.9
 
 Agora você escolhe o idioma das legendas do YouTube.

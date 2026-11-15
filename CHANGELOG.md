@@ -4,6 +4,13 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.10
+
+Discord fix on Windows.
+
+### Discord
+- **Rich Presence now finds Discord on Windows.** The app was looking for the Linux-style socket file, but on Windows Discord uses a named pipe (`\.\pipe\discord-ipc-N`), so it always said "could not find Discord open". It now connects to the pipe.
+
 ## 0.1.9
 
 You can now choose the language of YouTube subtitles.
