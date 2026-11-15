@@ -4,6 +4,13 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.7
+
+Correção nas letras.
+
+### Letras
+- **As legendas do YouTube não mostram mais tags HTML.** Algumas legendas chegavam como `<font color="…"><b>palavra</b></font>` no meio da letra. As tags agora são removidas de todos os provedores de letra, não só das legendas.
+
 ## 0.1.6
 
 Letras que escolhem a melhor fonte sozinhas, e as ferramentas de letra agora funcionam de verdade.

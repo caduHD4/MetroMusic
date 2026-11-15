@@ -4,6 +4,13 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.7
+
+Lyrics fix.
+
+### Lyrics
+- **YouTube subtitles no longer show HTML tags.** Some captions arrived as `<font color="…"><b>word</b></font>` in the middle of the lyrics. The tags are now removed from every lyrics provider, not only the subtitles.
+
 ## 0.1.6
 
 Lyrics that pick the best source on their own, and the lyrics tools now really work.
