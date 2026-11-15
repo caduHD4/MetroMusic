@@ -231,6 +231,7 @@ export const PAGES: Page[] = [
     { items: [
       note("Arraste para reordenar. Quanto mais alto, maior a prioridade. Cada fonte tem até 8 s para responder; a primeira que tiver a letra vale. Spotify e Deezer só respondem com a conta conectada, e a letra do YouTube Music normalmente não é sincronizada."),
       { t: "order", k: "lyricsOrder", def: Object.keys(LYRICS_PROVIDERS), names: LYRICS_PROVIDERS, offKey: "lyricsOff" },
+      sel("ytsubLang", "Idioma da legenda do YouTube", "auto", [["auto", "Automático (o idioma original)"], ["pt", "Português"], ["en", "English"], ["es", "Español"], ["ja", "日本語"], ["ko", "한국어"], ["zh", "中文"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["ru", "Русский"]], "Usado quando o vídeo tem uma legenda escrita nesse idioma; senão vale o original. Dá para trocar por música em Letra › Idioma da legenda"),
       tg("musixmatchForceLineSynced", "Musixmatch: só linha a linha", false, "Ignora a letra palavra a palavra do Musixmatch, que em algumas faixas fica irregular"),
     ] },
   ] },

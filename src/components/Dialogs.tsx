@@ -639,6 +639,44 @@ function LyricsSearch({ props, close }: P) {
     </Modal>
   );
 }
+/** Nome do idioma na língua do app (pt-BR); cai no nome que o YouTube deu se o sistema não conhecer o código. */
+function languageName(code: string, fallback: string): string {
+  try { const n = new Intl.DisplayNames(["pt-BR"], { type: "language" }).of(code); if (n && n !== code) return n.charAt(0).toUpperCase() + n.slice(1); } catch { /* código desconhecido */ }
+  return fallback || code;
+}
+
+/** Menu › "Idioma da legenda…": as legendas que o vídeo do YouTube tem, para escolher qual virar letra. */
+function LyricsCaptions({ props, close }: P) {
+  const t = getTrack(props.id)!; const ly = getLyrics(t);
+  const [list, setList] = useState<{ lang: string; name: string; auto: boolean; recommended: boolean }[] | null>(null);
+  const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!t.ext) { setError("Só dá para ver as legendas de faixas de uma fonte real."); return; }
+    engine.lyricsCaptions(t.ext).then((r) => setList(r ?? [])).catch((e) => setError(String(e).includes("não tem") ? "Esse vídeo não tem legendas." : `Não consegui consultar as legendas: ${String(e)}`));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = (c: { lang: string; auto: boolean }) => `${c.lang}|${c.auto}`;
+  const pick = async (c: { lang: string; name: string; auto: boolean }) => {
+    if (!t.ext || busy) return;
+    setBusy(key(c));
+    try {
+      const l = (await engine.lyricsCaption(t.ext, c.lang, c.auto)) as Lyrics;
+      useLyr.getState().clearTranslation(t.id); applyLyrics(t, l); close(); toast(`Letra: ${languageName(c.lang, c.name)}`);
+    } catch (e) { setBusy(null); toast(`Não consegui usar essa legenda: ${String(e)}`); }
+  };
+  const inUse = (c: { name: string }) => !!ly && ly.provider.endsWith(`· ${c.name}`);
+  return (
+    <Modal title="Idioma da legenda" subtitle="Escolha em qual idioma ler a letra. A sua escolha fica salva para esta música." width={460} onClose={close}>
+      {!list && !error && <div className="grid place-items-center h-32 gap-3 text-t3"><Spinner className="size-6" /><span className="text-[0.86rem]">Consultando o vídeo…</span></div>}
+      {error && <div className="text-t2 text-center py-8 leading-relaxed">{error}</div>}
+      {list && (list.length === 0 ? <div className="text-t2 text-center py-8">Esse vídeo não tem legendas.</div> : list.map((c) => (
+        <button key={key(c)} disabled={!!busy} onClick={() => void pick(c)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-s2 text-left disabled:opacity-60">
+          <div className="flex-1 min-w-0"><div className="font-medium flex items-center gap-2 flex-wrap">{languageName(c.lang, c.name)}{c.recommended && <Badge>Recomendada</Badge>}{c.auto && <Badge>Automática</Badge>}{inUse(c) && <Badge>Em uso</Badge>}</div>
+            <div className="text-t3 text-[0.82rem]">{c.auto ? "Gerada pelo YouTube; pode ter erros" : "Escrita por uma pessoa"} · {c.lang}</div></div>
+          {busy === key(c) ? <Spinner className="size-4" /> : <Btn size="sm">Usar</Btn>}
+        </button>)))}
+    </Modal>
+  );
+}
 function LyricsEdit({ props, close }: P) {
   const t = getTrack(props.id)!; const ly = getLyrics(t);
   const [text, setText] = useState(ly ? toLrc(ly) : "");
@@ -766,7 +804,7 @@ function Update({ close }: P) {
 const MAP: Record<string, (p: P) => ReactNode> = {
   createPlaylist: CreatePlaylist, editPlaylist: EditPlaylist, editCover: EditCover, duplicates: Duplicates, confirm: Confirm, share: Share, source: Source, editSong: EditSong, editArtist: EditArtist,
   details: Details, sleep: Sleep, tempo: Tempo, cast: CastDialog, mini: Mini, import: Import, shortcuts: Shortcuts, login: Login, welcome: Welcome, logout: Logout,
-  renameRemote: RenameRemote, lyricsSearch: LyricsSearch, lyricsEdit: LyricsEdit, lyricsOffset: LyricsOffset, lyricsImage: LyricsImage, timeTransfer: TimeTransfer, update: Update,
+  renameRemote: RenameRemote, lyricsSearch: LyricsSearch, lyricsEdit: LyricsEdit, lyricsCaptions: LyricsCaptions, lyricsOffset: LyricsOffset, lyricsImage: LyricsImage, timeTransfer: TimeTransfer, update: Update,
 };
 export function Dialogs() {
   const dialog = useUI((s) => s.dialog), close = useUI((s) => s.closeDialog);

@@ -377,7 +377,8 @@ fn trusted(l: &Lyrics, dur_s: f64) -> bool { l.synced && score(l, 0, 0, dur_s) >
 /// vence linha a linha, que vence sem sincronia; em empate vale a ordem. `None` = ninguém tem. `force` ignora o cache.
 pub async fn get(track: &TrackInfo, order: &[String], force: bool) -> Res<Option<Lyrics>> {
     use futures_util::stream::{FuturesUnordered, StreamExt};
-    let key = format!("{}|{}", track.key(), order.join(","));
+    let lang = crate::settings::current().values.get("ytsubLang").and_then(|v| v.as_str()).unwrap_or("auto").to_string();
+    let key = format!("{}|{}|{lang}", track.key(), order.join(","));
     if !force { if let Some(hit) = CACHE.lock().get(&key) { return Ok(hit.clone()); } }
     let embedded_on = crate::settings::current().values.get("readEmbeddedLyrics").and_then(|v| v.as_bool()).unwrap_or(true);
     let mut found = if track.provider == "local" && embedded_on { crate::local::lyrics(std::path::Path::new(&track.id)) } else { None };

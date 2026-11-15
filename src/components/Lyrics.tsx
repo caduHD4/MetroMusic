@@ -1,7 +1,7 @@
 import { useLowPerf } from "../lib/perf";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
-import { Copy, Ellipsis, Languages, MicVocal, Pencil, RefreshCw, Search, Share2, Timer, Type, Image as ImageIcon } from "lucide-react";
+import { Captions, Copy, Ellipsis, Languages, MicVocal, Pencil, RefreshCw, Search, Share2, Timer, Type, Image as ImageIcon } from "lucide-react";
 import { useRomanizer } from "../lib/romanizeSettings";
 import { getLyrics, getTrack, type LyricLine, type Track } from "../lib/catalog";
 import { invoke } from "../lib/native";
@@ -49,6 +49,7 @@ export function lyricsMenu(t: Track): MenuItem[] {
   return [
     { label: "Buscar outra letra…", icon: <Search />, onClick: () => openDialog("lyricsSearch", { id: t.id }) },
     { label: "Editar letra…", icon: <Pencil />, onClick: () => openDialog("lyricsEdit", { id: t.id }) },
+    { label: "Idioma da legenda…", icon: <Captions />, disabled: !t.ext, onClick: () => openDialog("lyricsCaptions", { id: t.id }) },
     { label: "Buscar de novo", icon: <RefreshCw />, onClick: () => refreshLyrics(t) },
     { divider: true },
     { label: tr === "done" ? "Remover tradução" : "Traduzir com IA", icon: <Languages />, disabled: !ly, onClick: () => (tr === "done" ? L.clearTranslation(t.id) : L.translate(t.id)) },

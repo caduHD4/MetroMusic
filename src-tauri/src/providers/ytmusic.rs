@@ -766,28 +766,51 @@ fn script_lang(hint: &str) -> Option<&'static str> {
 }
 
 /// Escolhe a faixa de legenda certa: a letra no idioma **original** da música, nunca uma tradução qualquer.
+/// 0) o idioma que a pessoa escolheu nas configurações, se o vídeo tiver uma faixa manual nele;
 /// 1) o idioma da escrita do título; 2) o idioma da legenda automática, se existir uma manual nele (a automática
 /// costuma acertar o idioma falado em músicas em línguas latinas); 3) inglês; 4) a primeira manual; 5) a automática.
 /// `tracks`: `(idioma, é automática)`; devolve o índice.
-pub(crate) fn pick_track(tracks: &[(String, bool)], hint: &str) -> Option<usize> {
+pub(crate) fn pick_track(tracks: &[(String, bool)], hint: &str, preferred: &str) -> Option<usize> {
     let base = |l: &str| l.split(['-', '_']).next().unwrap_or(l).to_lowercase();
     let manual = |lang: &str| tracks.iter().position(|t| !t.1 && base(&t.0) == lang);
-    script_lang(hint).and_then(manual)
+    let pref = base(preferred);
+    Some(pref).filter(|p| !p.is_empty() && p != "auto").and_then(|p| manual(&p))
+        .or_else(|| script_lang(hint).and_then(manual))
         .or_else(|| tracks.iter().find(|t| t.1).and_then(|t| manual(&base(&t.0))).filter(|_| script_lang(hint).is_none()))
         .or_else(|| manual("en"))
         .or_else(|| tracks.iter().position(|t| !t.1))
         .or_else(|| if tracks.is_empty() { None } else { Some(0) })
 }
 
-/// Legenda do vídeo: `(início em ms, texto)` por trecho. Pega a faixa certa (`pick_track`) e lê o `timedtext`
-/// que o YouTube serve para o mesmo cliente que gerou a URL. `hint` = título + artista da música.
-pub async fn transcript(video_id: &str, hint: &str) -> Res<Vec<(u64, String)>> {
+/// Idioma escolhido em Configurações › Provedores de letra (`auto` = o do original).
+fn preferred_lang() -> String { crate::settings::current().values.get("ytsubLang").and_then(|v| v.as_str()).unwrap_or("auto").to_string() }
+
+/// Opção que a interface mostra: um idioma disponível no vídeo.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionInfo { pub lang: String, pub name: String, pub auto: bool, pub recommended: bool }
+
+/// Os idiomas de legenda que o vídeo tem, com a faixa que o app escolheria sozinho marcada como recomendada.
+pub async fn caption_list(video_id: &str, hint: &str) -> Res<Vec<CaptionInfo>> {
     let tracks = super::youtube::caption_tracks(video_id).await?;
-    let langs: Vec<(String, bool)> = tracks.iter().map(|t| (t.0.clone(), t.1)).collect();
-    let (_, _, url, ua) = tracks.into_iter().nth(pick_track(&langs, hint).ok_or("sem legendas")?).ok_or("sem legendas")?;
-    let xml = crate::http::CLIENT.get(url.replace("&fmt=srv3", "")).header("User-Agent", ua).timeout(std::time::Duration::from_secs(10)).send().await.map_err(err)?.text().await.map_err(err)?;
+    let langs: Vec<(String, bool)> = tracks.iter().map(|t| (t.lang.clone(), t.auto)).collect();
+    let rec = pick_track(&langs, hint, &preferred_lang());
+    Ok(tracks.iter().enumerate().map(|(i, t)| CaptionInfo { lang: t.lang.clone(), name: t.name.clone(), auto: t.auto, recommended: Some(i) == rec }).collect())
+}
+
+/// Legenda do vídeo: `(início em ms, texto)` por trecho e a faixa usada. Sem `want`, pega a faixa certa
+/// (`pick_track`); com `want = (idioma, automática)`, exatamente aquela. `hint` = título + artista da música.
+pub async fn transcript(video_id: &str, hint: &str, want: Option<(&str, bool)>) -> Res<(Vec<(u64, String)>, super::youtube::CaptionTrack)> {
+    let tracks = super::youtube::caption_tracks(video_id).await?;
+    let langs: Vec<(String, bool)> = tracks.iter().map(|t| (t.lang.clone(), t.auto)).collect();
+    let i = match want {
+        Some((l, a)) => tracks.iter().position(|t| t.lang == l && t.auto == a).ok_or("o vídeo não tem mais essa legenda")?,
+        None => pick_track(&langs, hint, &preferred_lang()).ok_or("sem legendas")?,
+    };
+    let track = tracks.into_iter().nth(i).ok_or("sem legendas")?;
+    let xml = crate::http::CLIENT.get(track.url.replace("&fmt=srv3", "")).header("User-Agent", track.ua).timeout(std::time::Duration::from_secs(10)).send().await.map_err(err)?.text().await.map_err(err)?;
     let cues = parse_timedtext(&xml);
-    if cues.is_empty() { Err("a legenda veio vazia".into()) } else { Ok(cues) }
+    if cues.is_empty() { Err("a legenda veio vazia".into()) } else { Ok((cues, track)) }
 }
 
 /// Entidades que sobram depois do XML: o YouTube escapa o texto duas vezes (`&amp;#39;`).

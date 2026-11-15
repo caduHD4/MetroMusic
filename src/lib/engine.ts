@@ -62,6 +62,8 @@ export const engine = {
   imageClear: () => invoke<number>("image_cache_clear"),
   importMatch: (items: { title: string; artist: string; durationSec?: number }[]) => invoke<(ExtInfo | null)[]>("import_match", { items, order: playbackOrder() }),
   lyrics: (track: ExtInfo, order: string[], force = false) => invoke<unknown>("lyrics_get", { track, order, force }),
+  lyricsCaptions: (track: ExtInfo) => invoke<{ lang: string; name: string; auto: boolean; recommended: boolean }[]>("lyrics_captions", { track }),
+  lyricsCaption: (track: ExtInfo, lang: string, auto: boolean) => invoke<unknown>("lyrics_caption", { track, lang, auto }),
   lyricsSearch: (track: ExtInfo, title: string, artist: string, order: string[]) => invoke<unknown[]>("lyrics_search", { track, title, artist, order }),
   ytLoginStart: () => invoke("yt_login_start"),
   ytLoginCancel: () => invoke("yt_login_cancel"),

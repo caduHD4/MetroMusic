@@ -110,6 +110,18 @@ pub async fn lyrics_search(track: TrackInfo, title: String, artist: String, orde
     Ok(crate::lyrics::search_all(&track, &title, &artist, &supported(order)).await)
 }
 
+/// Menu › "Idioma da legenda…": os idiomas de legenda que o vídeo da faixa tem.
+#[tauri::command]
+pub async fn lyrics_captions(track: TrackInfo) -> Res<Vec<crate::providers::ytmusic::CaptionInfo>> {
+    crate::lyrics_more::ytsub_languages(&track).await.ok_or_else(|| "esse vídeo não tem legendas".to_string())
+}
+
+/// A letra feita da legenda de um idioma escolhido.
+#[tauri::command]
+pub async fn lyrics_caption(track: TrackInfo, lang: String, auto: bool) -> Res<crate::lyrics::Lyrics> {
+    crate::lyrics_more::ytsub_language(&track, &lang, auto).await.ok_or_else(|| "não consegui ler essa legenda".to_string())
+}
+
 // ───────── Contas
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};

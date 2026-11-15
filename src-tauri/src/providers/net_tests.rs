@@ -901,7 +901,8 @@ async fn net_ytsub_igaku() {
 async fn net_ytsub_inspecionar() {
     let id = std::env::var("MM_VID").unwrap_or("WPh2bWFxUz0".into());
     let tr = super::youtube::caption_tracks(&id).await.expect("faixas");
-    for (lang, asr, url, ua) in &tr {
+    for t in &tr {
+        let (lang, asr, url, ua) = (&t.lang, &t.auto, &t.url, &t.ua);
         let xml = crate::http::CLIENT.get(url.as_str()).header("User-Agent", *ua).send().await.unwrap().text().await.unwrap();
         let cues = super::ytmusic::parse_timedtext(&xml);
         println!("FAIXA lang={lang} asr={asr} | {} trechos | {:?}", cues.len(), url.split('&').filter(|p| p.starts_with("lang=") || p.starts_with("tlang=") || p.starts_with("name=") || p.starts_with("kind=")).collect::<Vec<_>>());
@@ -959,5 +960,17 @@ async fn net_igaku_spotify() {
     match crate::lyrics::get(&t, &["spotify".to_string()], true).await.unwrap() {
         Some(l) => { println!("SP_LETRA {} linhas sync={} último t={:.0}s", l.lines.len(), l.synced, l.lines.last().map_or(0.0, |x| x.t)); for x in l.lines.iter().take(12) { println!("     {:>6.1}s {}", x.t, x.text); } }
         None => println!("SP_LETRA nada"),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_ytsub_idiomas() {
+    let t = TrackInfo { provider: "youtube".into(), id: "zXyOZvD1zU0".into(), title: "IGAKU イガク - Kasane Teto (Fan-Made Music Video)".into(), artists: vec!["sidoopa".into()], duration_ms: Some(121_000), ..Default::default() };
+    let langs = crate::lyrics_more::ytsub_languages(&t).await.expect("idiomas");
+    for l in &langs { println!("IDIOMA {} | {:?} | auto={} | recomendada={}", l.lang, l.name, l.auto, l.recommended); }
+    for (lang, auto) in [("pt", false), ("es-419", false), ("ja", false)] {
+        let r = crate::lyrics_more::ytsub_language(&t, lang, auto).await.expect("letra");
+        println!("LETRA {lang}: {} | {} linhas | {} / {}", r.provider, r.lines.len(), r.lines[0].text, r.lines[1].text);
     }
 }

@@ -450,14 +450,37 @@ pub async fn youtube(t: &TrackInfo) -> Option<Lyrics> {
     lyrics("YouTube Music", false, plain_lines(&text))
 }
 
-/// Legenda do vídeo (YouTubeSubtitle do MetroFuse): linhas com tempo, sem palavra a palavra.
-pub async fn ytsub(t: &TrackInfo) -> Option<Lyrics> {
-    let id = if t.provider == "youtube" { t.id.clone() } else {
-        crate::providers::youtube::search(&format!("{} {}", t.title, clean_artist(&t.artist_line())), 1).await.ok()?.first()?.id.clone()
-    };
-    let cues = crate::providers::ytmusic::transcript(&id, &format!("{} {}", t.title, t.artist_line())).await.ok()?;
+/// Vídeo do YouTube da faixa: o próprio id, ou o primeiro resultado da busca por título e artista.
+async fn video_of(t: &TrackInfo) -> Option<String> {
+    if t.provider == "youtube" { return Some(t.id.clone()); }
+    Some(crate::providers::youtube::search(&format!("{} {}", t.title, clean_artist(&t.artist_line())), 1).await.ok()?.first()?.id.clone())
+}
+
+fn sub_lyrics(cues: Vec<(u64, String)>, track: &crate::providers::youtube::CaptionTrack) -> Option<Lyrics> {
     let lrc: String = cues.iter().map(|(ms, text)| format!("[{:02}:{:02}.{:02}]{}\n", ms / 60000, (ms / 1000) % 60, (ms % 1000) / 10, text)).collect();
-    lyrics("YouTube Legenda", true, parse_lrc(&lrc))
+    let label = if track.name.is_empty() { track.lang.clone() } else { track.name.clone() };
+    lyrics(&format!("YouTube Legenda · {label}"), true, parse_lrc(&lrc))
+}
+
+/// Legenda do vídeo (YouTubeSubtitle do MetroFuse): linhas com tempo, sem palavra a palavra. O idioma é o das
+/// configurações (`ytsubLang`) ou, em `auto`, o do original.
+pub async fn ytsub(t: &TrackInfo) -> Option<Lyrics> {
+    let id = video_of(t).await?;
+    let (cues, track) = crate::providers::ytmusic::transcript(&id, &format!("{} {}", t.title, t.artist_line()), None).await.ok()?;
+    sub_lyrics(cues, &track)
+}
+
+/// Os idiomas de legenda que o vídeo da faixa tem (para a pessoa escolher).
+pub async fn ytsub_languages(t: &TrackInfo) -> Option<Vec<crate::providers::ytmusic::CaptionInfo>> {
+    let id = video_of(t).await?;
+    crate::providers::ytmusic::caption_list(&id, &format!("{} {}", t.title, t.artist_line())).await.ok()
+}
+
+/// A legenda de um idioma específico, escolhido pela pessoa.
+pub async fn ytsub_language(t: &TrackInfo, lang: &str, auto: bool) -> Option<Lyrics> {
+    let id = video_of(t).await?;
+    let (cues, track) = crate::providers::ytmusic::transcript(&id, "", Some((lang, auto))).await.ok()?;
+    sub_lyrics(cues, &track)
 }
 
 // ───────── Deezer (letra da conta, palavra a palavra; exige o arl)
@@ -586,12 +609,16 @@ mod tests {
         let t = |l: &str, asr: bool| (l.to_string(), asr);
         // o vídeo do IGAKU: en, en-GB, ja, pt, es-419 e uma automática (errada) em coreano
         let igaku = vec![t("es-419", false), t("pt", false), t("ko", true), t("en", false), t("ja", false), t("en-GB", false)];
-        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto sidoopa"), Some(4)); // ja pela escrita do título
-        assert_eq!(pick_track(&igaku, "IGAKU - Kasane Teto"), Some(3)); // sem pista de escrita: a automática (ko) não tem manual, vai o inglês
+        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto sidoopa", "auto"), Some(4)); // ja pela escrita do título
+        assert_eq!(pick_track(&igaku, "IGAKU - Kasane Teto", "auto"), Some(3));
+        // a preferência da pessoa vale mesmo contra a escrita do título, desde que exista faixa manual nesse idioma
+        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto", "pt-BR"), Some(1));
+        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto", "fr"), Some(4)); // sem francês: volta ao automático
+        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto", "es"), Some(0)); // es-419 casa com "es" // sem pista de escrita: a automática (ko) não tem manual, vai o inglês
         let es = vec![t("en", false), t("es", false), t("es", true)];
-        assert_eq!(pick_track(&es, "La Bamba"), Some(1)); // a automática diz espanhol e há manual em espanhol
-        assert_eq!(pick_track(&[t("de", true)], "x"), Some(0)); // só automática
-        assert_eq!(pick_track(&[], "x"), None);
+        assert_eq!(pick_track(&es, "La Bamba", "auto"), Some(1)); // a automática diz espanhol e há manual em espanhol
+        assert_eq!(pick_track(&[t("de", true)], "x", "auto"), Some(0)); // só automática
+        assert_eq!(pick_track(&[], "x", "auto"), None);
     }
 
     #[test]

@@ -310,10 +310,14 @@ pub async fn resolve(video_id: &str, expected_ms: Option<u64>) -> Res<StreamInfo
     Err(format!("YouTube Music: nenhum stream para {video_id} ({})", failures.join("; ")))
 }
 
+/// Uma faixa de legenda do vídeo.
+#[derive(Clone, Debug)]
+pub struct CaptionTrack { pub lang: String, pub name: String, pub auto: bool, pub url: String, pub ua: &'static str }
+
 /// Faixas de legenda do vídeo, vindas do `player` dos mesmos clientes que tocam o áudio (o `get_transcript` do site
-/// passou a exigir token de atestação). Devolve `(idioma, é automática, URL, User-Agent do cliente)`; o primeiro
-/// cliente que trouxer legendas vence.
-pub async fn caption_tracks(video_id: &str) -> Res<Vec<(String, bool, String, &'static str)>> {
+/// passou a exigir token de atestação). O primeiro cliente que trouxer legendas vence; a lista sai numa ordem fixa
+/// (idioma, manual antes de automática), porque cada cliente pode devolvê-las em outra.
+pub async fn caption_tracks(video_id: &str) -> Res<Vec<CaptionTrack>> {
     let visitor = visitor_data().await;
     let one = |c: &'static Client| {
         let visitor = visitor.clone();
@@ -322,10 +326,14 @@ pub async fn caption_tracks(video_id: &str) -> Res<Vec<(String, bool, String, &'
             let player = post("player", c, &visitor, body, false).await?;
             let status = at(&player, "playabilityStatus.status").and_then(|s| s.as_str()).unwrap_or("?");
             if status != "OK" { return Err(format!("{}: {status}", c.key)); }
-            let tracks: Vec<_> = at(&player, "captions.playerCaptionsTracklistRenderer.captionTracks").and_then(|t| t.as_array()).map(|t| t.iter().filter_map(|x| {
-                let url = x.get("baseUrl")?.as_str()?.to_string();
-                Some((x.get("languageCode").and_then(|l| l.as_str()).unwrap_or("").to_string(), x.get("kind").and_then(|k| k.as_str()) == Some("asr"), url, c.ua))
+            let mut tracks: Vec<CaptionTrack> = at(&player, "captions.playerCaptionsTracklistRenderer.captionTracks").and_then(|t| t.as_array()).map(|t| t.iter().filter_map(|x| {
+                let lang = x.get("languageCode").and_then(|l| l.as_str()).unwrap_or("").to_string();
+                let name = at(x, "name.simpleText").and_then(|n| n.as_str()).map(str::to_string)
+                    .or_else(|| at(x, "name.runs").and_then(|r| r.as_array()).map(|r| r.iter().filter_map(|y| y.get("text").and_then(|t| t.as_str())).collect::<String>()))
+                    .unwrap_or_default();
+                Some(CaptionTrack { lang, name, auto: x.get("kind").and_then(|k| k.as_str()) == Some("asr"), url: x.get("baseUrl")?.as_str()?.to_string(), ua: c.ua })
             }).collect()).unwrap_or_default();
+            tracks.sort_by(|a, b| a.lang.cmp(&b.lang).then(a.auto.cmp(&b.auto)));
             if tracks.is_empty() { Err(format!("{}: sem legendas", c.key)) } else { Ok(tracks) }
         }
     };
