@@ -320,6 +320,8 @@ pub async fn caption_tracks(video_id: &str) -> Res<Vec<(String, bool, String, &'
         async move {
             let body = json!({ "context": context(c, &visitor), "videoId": video_id, "playlistId": null, "contentCheckOk": true, "racyCheckOk": true });
             let player = post("player", c, &visitor, body, false).await?;
+            let status = at(&player, "playabilityStatus.status").and_then(|s| s.as_str()).unwrap_or("?");
+            if status != "OK" { return Err(format!("{}: {status}", c.key)); }
             let tracks: Vec<_> = at(&player, "captions.playerCaptionsTracklistRenderer.captionTracks").and_then(|t| t.as_array()).map(|t| t.iter().filter_map(|x| {
                 let url = x.get("baseUrl")?.as_str()?.to_string();
                 Some((x.get("languageCode").and_then(|l| l.as_str()).unwrap_or("").to_string(), x.get("kind").and_then(|k| k.as_str()) == Some("asr"), url, c.ua))
@@ -328,8 +330,9 @@ pub async fn caption_tracks(video_id: &str) -> Res<Vec<(String, bool, String, &'
         }
     };
     let mut race: FuturesUnordered<_> = PLAYBACK_CLIENTS.iter().map(one).collect();
-    while let Some(r) = race.next().await { if let Ok(t) = r { return Ok(t); } }
-    Err("o vídeo não tem legendas disponíveis".into())
+    let mut why: Vec<String> = vec![];
+    while let Some(r) = race.next().await { match r { Ok(t) => return Ok(t), Err(e) => why.push(e) } }
+    Err(format!("o vídeo não tem legendas disponíveis ({})", why.join("; ")))
 }
 
 pub fn invalidate(video_id: &str) { STREAMS.lock().retain(|k, _| k.split('|').next() != Some(video_id)); }

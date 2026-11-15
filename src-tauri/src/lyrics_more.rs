@@ -455,7 +455,7 @@ pub async fn ytsub(t: &TrackInfo) -> Option<Lyrics> {
     let id = if t.provider == "youtube" { t.id.clone() } else {
         crate::providers::youtube::search(&format!("{} {}", t.title, clean_artist(&t.artist_line())), 1).await.ok()?.first()?.id.clone()
     };
-    let cues = crate::providers::ytmusic::transcript(&id).await.ok()?;
+    let cues = crate::providers::ytmusic::transcript(&id, &format!("{} {}", t.title, t.artist_line())).await.ok()?;
     let lrc: String = cues.iter().map(|(ms, text)| format!("[{:02}:{:02}.{:02}]{}\n", ms / 60000, (ms / 1000) % 60, (ms % 1000) / 10, text)).collect();
     lyrics("YouTube Legenda", true, parse_lrc(&lrc))
 }
@@ -569,6 +569,29 @@ mod tests {
         let std_fmt = "<transcript><text start=\"1.36\" dur=\"1\">[\u{266a}]</text><text start=\"18.64\" dur=\"3\">\u{266a} We&amp;#39;re here \u{266a}</text></transcript>";
         assert_eq!(crate::providers::ytmusic::parse_timedtext(std_fmt), vec![(18640, "We're here".to_string())]);
         assert_eq!(crate::providers::ytmusic::parse_timedtext(xml), vec![(18640, "We're no strangers to love".to_string()), (22000, "You know".to_string())]);
+    }
+
+    #[test]
+    fn legenda_animada_sem_repeticao_e_sem_invisiveis() {
+        let zw = "\u{200B}\u{200B}\u{200B} \u{200B}";
+        let xml = format!("<transcript><text start=\"0.001\" dur=\"1\">Aviso de luzes piscantes</text><text start=\"16.734\">{zw}Yu!{zw}</text><text start=\"16.734\">{zw}Yu!{zw}</text><text start=\"17.101\">{zw}Dr. Kidori{zw}</text><text start=\"17.101\">{zw}Dr. Kidori{zw}</text><text start=\"17.868\">{zw}Dr. Kidori{zw}</text><text start=\"18.369\">{zw}Dr. Kidori{zw}</text><text start=\"20.0\">outro verso</text><text start=\"30.0\">Yu!</text><text start=\"33.0\">Yu!</text></transcript>");
+        let c = crate::providers::ytmusic::parse_timedtext(&xml);
+        assert_eq!(c.iter().map(|x| x.1.as_str()).collect::<Vec<_>>(), vec!["Yu!", "Dr. Kidori", "outro verso", "Yu!", "Yu!"]);
+        assert_eq!(c[1].0, 17101);
+    }
+
+    #[test]
+    fn escolhe_a_legenda_no_idioma_original() {
+        use crate::providers::ytmusic::pick_track;
+        let t = |l: &str, asr: bool| (l.to_string(), asr);
+        // o vídeo do IGAKU: en, en-GB, ja, pt, es-419 e uma automática (errada) em coreano
+        let igaku = vec![t("es-419", false), t("pt", false), t("ko", true), t("en", false), t("ja", false), t("en-GB", false)];
+        assert_eq!(pick_track(&igaku, "IGAKU イガク - Kasane Teto sidoopa"), Some(4)); // ja pela escrita do título
+        assert_eq!(pick_track(&igaku, "IGAKU - Kasane Teto"), Some(3)); // sem pista de escrita: a automática (ko) não tem manual, vai o inglês
+        let es = vec![t("en", false), t("es", false), t("es", true)];
+        assert_eq!(pick_track(&es, "La Bamba"), Some(1)); // a automática diz espanhol e há manual em espanhol
+        assert_eq!(pick_track(&[t("de", true)], "x"), Some(0)); // só automática
+        assert_eq!(pick_track(&[], "x"), None);
     }
 
     #[test]

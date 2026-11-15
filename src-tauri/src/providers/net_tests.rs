@@ -895,3 +895,69 @@ async fn net_ytsub_igaku() {
         None => println!("IGAKU: sem legenda"),
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn net_ytsub_inspecionar() {
+    let id = std::env::var("MM_VID").unwrap_or("WPh2bWFxUz0".into());
+    let tr = super::youtube::caption_tracks(&id).await.expect("faixas");
+    for (lang, asr, url, ua) in &tr {
+        let xml = crate::http::CLIENT.get(url.as_str()).header("User-Agent", *ua).send().await.unwrap().text().await.unwrap();
+        let cues = super::ytmusic::parse_timedtext(&xml);
+        println!("FAIXA lang={lang} asr={asr} | {} trechos | {:?}", cues.len(), url.split('&').filter(|p| p.starts_with("lang=") || p.starts_with("tlang=") || p.starts_with("name=") || p.starts_with("kind=")).collect::<Vec<_>>());
+        for c in cues.iter().take(8) { println!("     {:>7}ms {}", c.0, c.1); }
+        if lang == "es" || *asr { std::fs::write(format!("/tmp/ytsub_{lang}_{asr}.xml"), &xml).ok(); }
+    }
+    let t = TrackInfo { provider: "youtube".into(), id: id.clone(), title: "IGAKU イガク - Kasane Teto (Fan-Made Music Video)".into(), artists: vec!["sidoopa".into()], duration_ms: Some(121_000), ..Default::default() };
+    let l = crate::lyrics::get(&t, &["ytsub".to_string()], true).await.unwrap().expect("ytsub");
+    println!("RESULTADO {} linhas | {}", l.lines.len(), l.provider);
+    for x in l.lines.iter().take(12) { println!("     {:>6.1}s {}", x.t, x.text); }
+    // a legenda animada tinha 198 trechos para ~50 versos; um verso só se repete se o tempo entre eles for de verso, não de quadro
+    assert!(l.lines.len() < 100, "ainda há trechos repetidos por quadro");
+    assert!(l.lines.windows(2).all(|w| w[0].text != w[1].text || w[1].t - w[0].t > 1.5));
+    assert!(l.lines.iter().all(|x| !x.text.contains('\u{200B}')));
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_igaku_todos() {
+    let t = TrackInfo { provider: "youtube".into(), id: "WPh2bWFxUz0".into(), title: "IGAKU イガク - Kasane Teto (Fan-Made Music Video)".into(), artists: vec!["sidoopa".into()], duration_ms: Some(121_000), ..Default::default() };
+    for p in crate::lyrics::DEFAULT_ORDER {
+        match crate::lyrics::get(&t, &[p.to_string()], true).await.unwrap() {
+            Some(l) => { println!("PROV {p}: {} | sync={} | {} linhas | último t={:.0}s", l.provider, l.synced, l.lines.len(), l.lines.last().map_or(0.0, |x| x.t));
+                for x in l.lines.iter().take(4) { println!("     {:>6.1}s {}", x.t, x.text); } }
+            None => println!("PROV {p}: nada"),
+        }
+    }
+    let ordem: Vec<String> = crate::lyrics::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect();
+    let l = crate::lyrics::get(&t, &ordem, true).await.unwrap().unwrap();
+    println!("ESCOLHIDA {} | {} linhas", l.provider, l.lines.len());
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_igaku_contas() {
+    let dir = std::path::PathBuf::from(std::env::var("MM_AUTH_DIR").expect("MM_AUTH_DIR"));
+    super::deezer::init(dir.join("deezer-auth.txt"));
+    println!("CONTA deezer logado={}", super::deezer::is_logged_in());
+    let t = TrackInfo { provider: "youtube".into(), id: "WPh2bWFxUz0".into(), title: "IGAKU イガク - Kasane Teto (Fan-Made Music Video)".into(), artists: vec!["sidoopa".into()], duration_ms: Some(121_000), ..Default::default() };
+    let q = format!("{} {}", crate::lyrics::clean_title(&t.title), crate::lyrics::clean_artist(&t.artist_line()));
+    for c in super::deezer::search(&q, 5).await.unwrap_or_default() { println!("DZ_CAND {} | {} | {:?} | {:?}ms", c.id, c.title, c.artists, c.duration_ms); }
+    match crate::lyrics::get(&t, &["deezer".to_string()], true).await.unwrap() {
+        Some(l) => { println!("DZ_LETRA {} linhas sync={}", l.lines.len(), l.synced); for x in l.lines.iter().take(10) { println!("     {:>6.1}s {}", x.t, x.text); } }
+        None => println!("DZ_LETRA nada"),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn net_igaku_spotify() {
+    let dir = std::path::PathBuf::from(std::env::var("MM_AUTH_DIR").expect("MM_AUTH_DIR"));
+    super::spotify::init(dir.join("spotify-auth.json"));
+    let t = TrackInfo { provider: "youtube".into(), id: "WPh2bWFxUz0".into(), title: "IGAKU イガク - Kasane Teto (Fan-Made Music Video)".into(), artists: vec!["sidoopa".into()], duration_ms: Some(121_000), ..Default::default() };
+    match super::spotify::resolve_id(&t).await { Ok(id) => println!("SP_ID {id:?}"), Err(e) => println!("SP_ID erro {e}") }
+    match crate::lyrics::get(&t, &["spotify".to_string()], true).await.unwrap() {
+        Some(l) => { println!("SP_LETRA {} linhas sync={} último t={:.0}s", l.lines.len(), l.synced, l.lines.last().map_or(0.0, |x| x.t)); for x in l.lines.iter().take(12) { println!("     {:>6.1}s {}", x.t, x.text); } }
+        None => println!("SP_LETRA nada"),
+    }
+}

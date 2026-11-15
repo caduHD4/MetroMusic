@@ -320,8 +320,11 @@ static TAG: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)</?\s*[a-z][a-z0-9]*(?:
 
 /// Tira marcação HTML (`<font color=…>`, `<b>`, `<i>`) que algumas fontes, como as legendas do YouTube, deixam no texto.
 pub(crate) fn strip_markup(s: &str) -> String {
-    if !s.contains('<') { return s.to_string(); }
-    TAG.replace_all(s, "").split_whitespace().collect::<Vec<_>>().join(" ")
+    // espaços de largura zero (U+200B etc.) aparecem em volta do texto nas legendas animadas do YouTube
+    let zero = |c: char| matches!(c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}');
+    if !s.contains('<') && !s.chars().any(zero) { return s.to_string(); }
+    let no_zw: String = s.chars().filter(|c| !zero(*c)).collect();
+    TAG.replace_all(&no_zw, "").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Aplica `strip_markup` a toda a letra e descarta o que ficar vazio.

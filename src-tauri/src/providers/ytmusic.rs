@@ -753,12 +753,38 @@ pub async fn lyrics_text(video_id: &str) -> Res<Option<String>> {
     Ok(Some(text).filter(|t| !t.trim().is_empty()))
 }
 
-/// Legenda do vídeo: `(início em ms, texto)` por trecho. Pega a faixa escrita à mão (senão a automática) e lê o
-/// `timedtext` que o YouTube serve para o mesmo cliente que gerou a URL.
-pub async fn transcript(video_id: &str) -> Res<Vec<(u64, String)>> {
-    let mut tracks = super::youtube::caption_tracks(video_id).await?;
-    tracks.sort_by_key(|t| t.1); // manual antes de automática (a ordenação é estável: mantém o idioma original primeiro)
-    let (_, _, url, ua) = tracks.into_iter().next().ok_or("sem legendas")?;
+/// Idioma provável da música pela escrita do título/artista (kana → japonês, hangul → coreano, ideogramas → chinês…).
+fn script_lang(hint: &str) -> Option<&'static str> {
+    let has = |f: fn(char) -> bool| hint.chars().any(f);
+    if has(|c| matches!(c, '\u{3040}'..='\u{30FF}')) { Some("ja") }
+    else if has(|c| matches!(c, '\u{AC00}'..='\u{D7AF}' | '\u{1100}'..='\u{11FF}')) { Some("ko") }
+    else if has(|c| matches!(c, '\u{4E00}'..='\u{9FFF}')) { Some("zh") }
+    else if has(|c| matches!(c, '\u{0400}'..='\u{04FF}')) { Some("ru") }
+    else if has(|c| matches!(c, '\u{0E00}'..='\u{0E7F}')) { Some("th") }
+    else if has(|c| matches!(c, '\u{0600}'..='\u{06FF}')) { Some("ar") }
+    else { None }
+}
+
+/// Escolhe a faixa de legenda certa: a letra no idioma **original** da música, nunca uma tradução qualquer.
+/// 1) o idioma da escrita do título; 2) o idioma da legenda automática, se existir uma manual nele (a automática
+/// costuma acertar o idioma falado em músicas em línguas latinas); 3) inglês; 4) a primeira manual; 5) a automática.
+/// `tracks`: `(idioma, é automática)`; devolve o índice.
+pub(crate) fn pick_track(tracks: &[(String, bool)], hint: &str) -> Option<usize> {
+    let base = |l: &str| l.split(['-', '_']).next().unwrap_or(l).to_lowercase();
+    let manual = |lang: &str| tracks.iter().position(|t| !t.1 && base(&t.0) == lang);
+    script_lang(hint).and_then(manual)
+        .or_else(|| tracks.iter().find(|t| t.1).and_then(|t| manual(&base(&t.0))).filter(|_| script_lang(hint).is_none()))
+        .or_else(|| manual("en"))
+        .or_else(|| tracks.iter().position(|t| !t.1))
+        .or_else(|| if tracks.is_empty() { None } else { Some(0) })
+}
+
+/// Legenda do vídeo: `(início em ms, texto)` por trecho. Pega a faixa certa (`pick_track`) e lê o `timedtext`
+/// que o YouTube serve para o mesmo cliente que gerou a URL. `hint` = título + artista da música.
+pub async fn transcript(video_id: &str, hint: &str) -> Res<Vec<(u64, String)>> {
+    let tracks = super::youtube::caption_tracks(video_id).await?;
+    let langs: Vec<(String, bool)> = tracks.iter().map(|t| (t.0.clone(), t.1)).collect();
+    let (_, _, url, ua) = tracks.into_iter().nth(pick_track(&langs, hint).ok_or("sem legendas")?).ok_or("sem legendas")?;
     let xml = crate::http::CLIENT.get(url.replace("&fmt=srv3", "")).header("User-Agent", ua).timeout(std::time::Duration::from_secs(10)).send().await.map_err(err)?.text().await.map_err(err)?;
     let cues = parse_timedtext(&xml);
     if cues.is_empty() { Err("a legenda veio vazia".into()) } else { Ok(cues) }
@@ -772,15 +798,25 @@ fn unescape_twice(s: &str) -> String {
 /// Lê o `timedtext`: `<text start="s" dur="s">` (formato padrão) ou `<p t="ms" d="ms">` (formato 3, com `<s>` por palavra).
 pub(crate) fn parse_timedtext(xml: &str) -> Vec<(u64, String)> {
     let Ok(doc) = roxmltree::Document::parse(xml) else { return vec![] };
-    doc.descendants().filter(|n| n.has_tag_name("text") || n.has_tag_name("p")).filter_map(|n| {
+    let raw: Vec<(u64, String)> = doc.descendants().filter(|n| n.has_tag_name("text") || n.has_tag_name("p")).filter_map(|n| {
         let ms: u64 = match n.attribute("start") {
             Some(s) => (s.parse::<f64>().ok()? * 1000.0).round() as u64,
             None => n.attribute("t")?.parse().ok()?,
         };
         let raw: String = n.descendants().filter(|d| d.is_text()).filter_map(|d| d.text()).collect();
-        let text = crate::lyrics::strip_markup(&unescape_twice(&raw.split_whitespace().collect::<Vec<_>>().join(" "))).trim_matches(|c: char| c == '♪' || c.is_whitespace()).to_string();
-        // trechos só de ruído, como [Música] ou [♪♪♪]
+        let text = crate::lyrics::strip_markup(&unescape_twice(&raw)).trim_matches(|c: char| c == '♪' || c.is_whitespace()).to_string();
+        // trechos só de ruído, como [Música] ou [♪♪♪]; e o aviso de abertura (epilepsia etc.) que fica em 0–1 ms
         let noise = text.starts_with('[') && text.ends_with(']');
-        (!text.is_empty() && !noise).then_some((ms, text))
-    }).collect()
+        (!text.is_empty() && !noise && ms > 1).then_some((ms, text))
+    }).collect();
+    // Legendas animadas repetem o mesmo texto a cada quadro (e às vezes em dobro): um trecho igual ao anterior e que
+    // começa até 1,5 s depois é o mesmo verso, não um verso novo.
+    let mut out: Vec<(u64, String)> = vec![];
+    let mut last_seen = 0u64;
+    for (ms, text) in raw {
+        if out.last().map_or(false, |l| l.1 == text && ms.saturating_sub(last_seen) <= 1500) { last_seen = ms; continue; }
+        last_seen = ms;
+        out.push((ms, text));
+    }
+    out
 }
