@@ -4,6 +4,16 @@
 
 Each version published on GitHub uses the text of its section as the release notes (it is what appears in the in-app update notice).
 
+## 0.1.8
+
+More fixes for lyrics from YouTube subtitles.
+
+### Lyrics
+- **The subtitles now use the song's original language.** Videos with several caption tracks (English, Spanish, Portuguese…) used to give you whichever came first, which could be a translation. The app now picks the language from the title's script (kana → Japanese, hangul → Korean…), or the language of the automatic captions, then English. To read it in your language, use "Translate with AI" in the lyrics menu.
+- **No more repeated lines.** Animated captions repeat the same text on every frame (one video had 198 entries for about 50 lines). A repeat that starts within 1.5 s of the previous one is now treated as the same line. Lines that really repeat in the song are kept.
+- **Invisible characters** (zero-width spaces) around the text are removed from every lyrics provider, and so is the opening notice some videos put at 0 ms (such as the flashing-lights warning).
+- Spotify lyrics are still not working: the Spotify web player changed and the lookup fails. This is a separate problem.
+
 ## 0.1.7
 
 Lyrics fix.

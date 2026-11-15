@@ -4,6 +4,16 @@
 
 Cada versão publicada no GitHub usa o texto da sua seção como "o que mudou" (é o que aparece no aviso de atualização dentro do app).
 
+## 0.1.8
+
+Mais correções nas letras vindas das legendas do YouTube.
+
+### Letras
+- **As legendas agora usam o idioma original da música.** Vídeos com várias faixas de legenda (inglês, espanhol, português…) davam a primeira que viesse, que podia ser uma tradução. O app agora escolhe o idioma pela escrita do título (kana → japonês, hangul → coreano…), ou pelo idioma da legenda automática, e depois o inglês. Para ler no seu idioma, use "Traduzir com IA" no menu da letra.
+- **Chega de linhas repetidas.** Legendas animadas repetem o mesmo texto a cada quadro (um vídeo tinha 198 trechos para cerca de 50 versos). Uma repetição que começa até 1,5 s depois da anterior agora conta como a mesma linha. Versos que se repetem de verdade na música continuam.
+- **Caracteres invisíveis** (espaços de largura zero) em volta do texto são removidos de todos os provedores de letra, assim como o aviso de abertura que alguns vídeos põem em 0 ms (como o de luzes piscantes).
+- A letra do Spotify continua sem funcionar: o player web do Spotify mudou e a consulta falha. É um problema separado.
+
 ## 0.1.7
 
 Correção nas letras.
